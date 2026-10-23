@@ -179,3 +179,81 @@ For each executed test, record:
 | Defect reference | Related issue, if any |
 
 **Note:** Test cases in this document are planned tests. They must not be reported as passed until they have actually been executed.
+
+---
+
+## 11. Executed Test Log (Phase 1 & Phase 2)
+
+| Test ID | Suite | Description | Status |
+|---|---|---|---|
+| TC-SW-01 | Frame Codec | CRC-32 determinism, verification, and corruption detection | **PASS** |
+| TC-SW-02 | Frame Codec | Serialization and round-trip deserialization | **PASS** |
+| TC-SW-03 | Frame Codec | Malformed JSON & schema error rejection | **PASS** |
+| TC-SW-04 | Stop-and-Wait | Initial frame transmission & event transitions | **PASS** |
+| TC-SW-05 | Stop-and-Wait | Valid ACK handling and sequence number advancement (modulo 2) | **PASS** |
+| TC-SW-06 | Stop-and-Wait | Stale & unexpected ACK rejection | **PASS** |
+| TC-SW-07 | Stop-and-Wait | Receiver accepts valid frame and delivers payload once | **PASS** |
+| TC-SW-08 | Stop-and-Wait | Duplicate frame detection & re-acknowledgement | **PASS** |
+| TC-SW-09 | Stop-and-Wait | Lost ACK, deterministic timeout & retransmission | **PASS** |
+| TC-SW-10 | Stop-and-Wait | Multi-frame alternating-bit exchange | **PASS** |
+| TC-SW-11 | Stop-and-Wait | Retry limit exhaustion transitions to FAILED | **PASS** |
+| TC-SW-12 | Stop-and-Wait | Receiver rejects corrupted frame without payload delivery | **PASS** |
+| TC-SW-13 | Sliding Window | Invariant validation: positive window size and $M > N$ constraint | **PASS** |
+| TC-SW-14 | Sliding Window | Window capacity tracking and full-window push rejection | **PASS** |
+| TC-SW-15 | Sliding Window | Cumulative acknowledgement base advancement & capacity release | **PASS** |
+| TC-SW-16 | Sliding Window | Sequence-number wraparound without cycle ambiguity | **PASS** |
+| TC-SW-17 | Sliding Window | Stale and out-of-window ACK rejection | **PASS** |
+| TC-GBN-01 | Go-Back-N | Sender fills transmission window ($N = 4$) | **PASS** |
+| TC-GBN-02 | Go-Back-N | Sender refuses to exceed configured window capacity | **PASS** |
+| TC-GBN-03 | Go-Back-N | Valid cumulative ACK advances base correctly | **PASS** |
+| TC-GBN-04 | Go-Back-N | Multiple acknowledged frames advance window (cumulative ACK) | **PASS** |
+| TC-GBN-05 | Go-Back-N | Sequence number wraparound (modulo 5) | **PASS** |
+| TC-GBN-06 | Go-Back-N | Invalid and stale ACKs do not corrupt sender state | **PASS** |
+| TC-GBN-07 | Go-Back-N | Receiver accepts expected frame and advances expected sequence | **PASS** |
+| TC-GBN-08 | Go-Back-N | Receiver discards out-of-order frame without buffering | **PASS** |
+| TC-GBN-09 | Go-Back-N | Receiver does not deliver duplicate payloads | **PASS** |
+| TC-GBN-10 | Go-Back-N | Timeout retransmits ALL outstanding frames from base | **PASS** |
+| TC-GBN-11 | Go-Back-N | Successful ACK after retransmission resumes transmission | **PASS** |
+| TC-GBN-12 | Go-Back-N | Retry exhaustion terminates sender in FAILED state | **PASS** |
+| TC-GBN-13 | Go-Back-N | Corrupted frames rejected by receiver without delivery | **PASS** |
+| TC-SR-01 | Selective Repeat | Valid configuration succeeds ($M \ge 2N$) | **PASS** |
+| TC-SR-02 | Selective Repeat | Strict rejection when $M < 2N$ mathematical constraint is violated | **PASS** |
+| TC-SR-03 | Selective Repeat | Sender window filling and refusal of excess frames | **PASS** |
+| TC-SR-04 | Selective Repeat | Individual ACK tracking for each outstanding frame slot | **PASS** |
+| TC-SR-05 | Selective Repeat | Contiguous sender-window sliding after base ACK | **PASS** |
+| TC-SR-06 | Selective Repeat | Sequence-number wraparound handling | **PASS** |
+| TC-SR-07 | Selective Repeat | Out-of-order frame buffering in receiver ($[rcvBase, rcvBase + N - 1]$) | **PASS** |
+| TC-SR-08 | Selective Repeat | Cascaded sequential delivery of buffered frames upon missing frame arrival | **PASS** |
+| TC-SR-09 | Selective Repeat | Duplicate frame prevention and non-redelivery | **PASS** |
+| TC-SR-10 | Selective Repeat | Individual frame ACK transmission | **PASS** |
+| TC-SR-11 | Selective Repeat | Rejection of out-of-window frames | **PASS** |
+| TC-SR-12 | Selective Repeat | Selective retransmission of ONLY affected timed-out frame | **PASS** |
+| TC-SR-13 | Selective Repeat | Independent timers: ACK of one frame does not reset unrelated timers | **PASS** |
+| TC-SR-14 | Selective Repeat | Retry exhaustion marks sender FAILED and halts transmission | **PASS** |
+| TC-SR-15 | Selective Repeat | Corrupted frame rejection without payload delivery | **PASS** |
+| TC-SIM-01 | Simulation Engine | Valid configuration accepted & invalid configuration rejected | **PASS** |
+| TC-SIM-02 | Simulation Engine | Seed reproducibility: identical configuration and seed yield identical results | **PASS** |
+| TC-SIM-03 | Simulation Engine | Seed variation: distinct seeds yield distinct PRNG loss sequences | **PASS** |
+| TC-SIM-04 | Simulation Engine | Stop-and-Wait transfer with zero loss runs to completion | **PASS** |
+| TC-SIM-05 | Simulation Engine | Go-Back-N transfer with zero loss runs to completion | **PASS** |
+| TC-SIM-06 | Simulation Engine | Selective Repeat transfer with zero loss runs to completion | **PASS** |
+| TC-SIM-07 | Simulation Engine | Dropped data frame triggers timeout recovery and retransmission | **PASS** |
+| TC-SIM-08 | Simulation Engine | Dropped ACK triggers recovery without duplicate payload delivery | **PASS** |
+| TC-SIM-09 | Simulation Engine | Go-Back-N timeout retransmits all outstanding frames in window | **PASS** |
+| TC-SIM-10 | Simulation Engine | Selective Repeat timeout retransmits only the affected frame | **PASS** |
+| TC-SIM-11 | Simulation Engine | Pause halts virtual time and event progression | **PASS** |
+| TC-SIM-12 | Simulation Engine | Step advances virtual time deterministically by specified delta | **PASS** |
+| TC-SIM-13 | Simulation Engine | Resume continues paused simulation to completion | **PASS** |
+| TC-SIM-14 | Simulation Engine | Reset restores initial state, clears queues, channels and timers | **PASS** |
+| TC-SIM-15 | Simulation Engine | Performance statistics match expected counts and ratios | **PASS** |
+| TC-SIM-16 | Simulation Engine | Safety limit prevents infinite execution upon retry exhaustion | **PASS** |
+| TC-FE-01 | Frontend Visualizer | Protocol metadata covers all three protocols with distinct mechanics | **PASS** |
+| TC-FE-02 | Frontend Visualizer | Protocol switching enforces mathematical constraints (SAW N=1, GBN M>N, SR M>=2N) | **PASS** |
+| TC-FE-03 | Frontend Visualizer | Configuration form validation and negative parameter feedback | **PASS** |
+| TC-FE-04 | Frontend Visualizer | Engine initialization and start lifecycle transitions | **PASS** |
+| TC-FE-05 | Frontend Visualizer | Pause and resume control states freezing/resuming virtual time | **PASS** |
+| TC-FE-06 | Frontend Visualizer | Discrete step execution and complete state reset | **PASS** |
+| TC-FE-07 | Frontend Visualizer | Event timeline chronological display and normalized event rendering | **PASS** |
+| TC-FE-08 | Frontend Visualizer | Statistics calculations and empty state handling without division-by-zero | **PASS** |
+| TC-FE-09 | Frontend Visualizer | Simulation failure and retry exhaustion handling | **PASS** |
+| TC-FE-10 | Frontend Visualizer | Selective Repeat out-of-order buffering and cascade delivery integration | **PASS** |
