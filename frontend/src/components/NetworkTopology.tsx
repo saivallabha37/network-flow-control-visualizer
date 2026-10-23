@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ProtocolType,
   SimulationEvent,
   SimulationState,
+  InFlightPacket,
 } from '@agent';
 import {
   ArrowRight,
@@ -19,6 +20,8 @@ interface NetworkTopologyProps {
   engineState: SimulationState | null;
   latestEvent?: SimulationEvent;
   virtualTimeMs: number;
+  selectedPacketId?: string | null;
+  onSelectInFlightPacket?: (packet: InFlightPacket) => void;
 }
 
 export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
@@ -26,7 +29,23 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
   engineState,
   latestEvent,
   virtualTimeMs,
+  selectedPacketId,
+  onSelectInFlightPacket,
 }) => {
+  // Respect user preference for reduced motion
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setPrefersReducedMotion(mediaQuery.matches);
+
+      const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+      mediaQuery.addEventListener('change', handler);
+      return () => mediaQuery.removeEventListener('change', handler);
+    }
+  }, []);
+
   if (!engineState) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-500 text-sm">
@@ -68,11 +87,15 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800 text-xs">
         <div className="flex items-center space-x-2">
           <Layers className="w-4 h-4 text-indigo-400" />
-          <span className="font-semibold text-white">Network Topology & Channel Animation</span>
+          <h3 className="font-semibold text-white text-sm">Network Topology &amp; Physical Channel</h3>
         </div>
         <div className="flex items-center space-x-4 text-slate-400">
-          <span>In-Flight Packets: <strong className="text-indigo-400 font-mono">{inFlightCount}</strong></span>
-          <span>Delivered: <strong className="text-emerald-400 font-mono">{deliveredPayloads.length}</strong></span>
+          <span>
+            In-Flight Packets: <strong className="text-indigo-400 font-mono">{inFlightCount}</strong>
+          </span>
+          <span>
+            Delivered: <strong className="text-emerald-400 font-mono">{deliveredPayloads.length}</strong>
+          </span>
         </div>
       </div>
 
@@ -84,7 +107,9 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
               <div className="flex items-center space-x-2">
                 <Server className="w-4 h-4 text-indigo-400" />
-                <h4 className="font-bold text-xs text-white uppercase tracking-wider">Sender (Host A)</h4>
+                <h4 className="font-bold text-xs text-white uppercase tracking-wider">
+                  Sender (Host A)
+                </h4>
               </div>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 font-mono">
                 Base: {senderBase}
@@ -152,8 +177,8 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
         <div className="lg:col-span-6 bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between space-y-6">
           <div className="flex items-center justify-between text-xs text-slate-400 pb-2 border-b border-slate-800/60">
             <span className="font-medium text-slate-300">Virtual Propagation Channel</span>
-            <span className="text-[11px] text-indigo-400 font-mono">
-              Simulated Delay: Latency Active
+            <span className="text-[11px] text-slate-400 font-mono">
+              Click packet to inspect
             </span>
           </div>
 
@@ -176,16 +201,32 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
                 const elapsed = virtualTimeMs - pkt.departureTime;
                 const progress = Math.max(0, Math.min(1, elapsed / totalDuration));
                 const leftPercent = progress * 88; // Keep within card width bounds
+                const isSelected = selectedPacketId === pkt.id;
 
                 return (
                   <div
                     key={pkt.id}
-                    className={`absolute transition-all duration-75 transform -translate-y-1/2 flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-mono shadow-md border ${
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelectInFlightPacket?.(pkt)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        onSelectInFlightPacket?.(pkt);
+                      }
+                    }}
+                    aria-label={`Inspect DATA packet sequence ${pkt.frame.seqNum}`}
+                    className={`absolute transform -translate-y-1/2 flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-mono shadow-md border cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                      prefersReducedMotion ? '' : 'transition-all duration-100 ease-linear'
+                    } ${
+                      isSelected
+                        ? 'ring-2 ring-indigo-400 scale-105 z-10'
+                        : ''
+                    } ${
                       pkt.isDropped && progress >= 0.5
                         ? 'bg-rose-950/80 border-rose-500/60 text-rose-300 opacity-80'
                         : pkt.isCorrupted
                         ? 'bg-purple-950/80 border-purple-500/60 text-purple-300'
-                        : 'bg-indigo-900/90 border-indigo-500/80 text-white'
+                        : 'bg-indigo-900/90 border-indigo-500/80 text-white hover:border-indigo-400'
                     }`}
                     style={{ left: `${leftPercent}%`, top: '50%' }}
                   >
@@ -200,7 +241,9 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
               })}
 
               {dataPackets.length === 0 && (
-                <span className="text-[10px] text-slate-600 mx-auto italic">No DATA frames in transit</span>
+                <span className="text-[10px] text-slate-600 mx-auto italic">
+                  No DATA frames in transit
+                </span>
               )}
             </div>
           </div>
@@ -223,16 +266,31 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
                 const totalDuration = pkt.scheduledDeliveryTime - pkt.departureTime || 1;
                 const elapsed = virtualTimeMs - pkt.departureTime;
                 const progress = Math.max(0, Math.min(1, elapsed / totalDuration));
-                // ACK travels from right to left
                 const rightPercent = progress * 88;
+                const isSelected = selectedPacketId === pkt.id;
 
                 return (
                   <div
                     key={pkt.id}
-                    className={`absolute transition-all duration-75 transform -translate-y-1/2 flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-mono shadow-md border ${
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelectInFlightPacket?.(pkt)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        onSelectInFlightPacket?.(pkt);
+                      }
+                    }}
+                    aria-label={`Inspect ACK packet ${pkt.frame.ackNum}`}
+                    className={`absolute transform -translate-y-1/2 flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-mono shadow-md border cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-cyan-400 ${
+                      prefersReducedMotion ? '' : 'transition-all duration-100 ease-linear'
+                    } ${
+                      isSelected
+                        ? 'ring-2 ring-cyan-400 scale-105 z-10'
+                        : ''
+                    } ${
                       pkt.isDropped && progress >= 0.5
                         ? 'bg-rose-950/80 border-rose-500/60 text-rose-300 opacity-80'
-                        : 'bg-cyan-950 border-cyan-500/80 text-cyan-200'
+                        : 'bg-cyan-950 border-cyan-500/80 text-cyan-200 hover:border-cyan-400'
                     }`}
                     style={{ right: `${rightPercent}%`, top: '50%' }}
                   >
@@ -247,7 +305,9 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
               })}
 
               {ackPackets.length === 0 && (
-                <span className="text-[10px] text-slate-600 mx-auto italic">No ACKs in transit</span>
+                <span className="text-[10px] text-slate-600 mx-auto italic">
+                  No ACKs in transit
+                </span>
               )}
             </div>
           </div>
@@ -259,7 +319,9 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
               <div className="flex items-center space-x-2">
                 <Server className="w-4 h-4 text-emerald-400" />
-                <h4 className="font-bold text-xs text-white uppercase tracking-wider">Receiver (Host B)</h4>
+                <h4 className="font-bold text-xs text-white uppercase tracking-wider">
+                  Receiver (Host B)
+                </h4>
               </div>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-mono">
                 Expect: {receiverBase}
@@ -296,7 +358,10 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
               <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 text-[11px] font-mono max-h-24 overflow-y-auto space-y-1">
                 {deliveredPayloads.length > 0 ? (
                   deliveredPayloads.map((msg, i) => (
-                    <div key={`delivered-${i}-${msg}`} className="text-emerald-300 flex items-center justify-between text-[10px]">
+                    <div
+                      key={`delivered-${i}-${msg}`}
+                      className="text-emerald-300 flex items-center justify-between text-[10px]"
+                    >
                       <span>&bull; {msg}</span>
                       <span className="text-[9px] text-slate-500">#{i}</span>
                     </div>
@@ -312,7 +377,7 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
 
       {/* Visualizer Legend */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400">
-        <span className="font-semibold text-slate-300">Legend:</span>
+        <span className="font-semibold text-slate-300">Channel Legend:</span>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded bg-indigo-600 border border-indigo-400 inline-block" />
@@ -339,4 +404,3 @@ export const NetworkTopology: React.FC<NetworkTopologyProps> = ({
     </div>
   );
 };
-

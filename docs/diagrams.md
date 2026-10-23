@@ -203,6 +203,55 @@ stateDiagram-v2
 3. Sliding Window is a general mechanism; Go-Back-N and Selective Repeat are specific ARQ strategies that use windowing.
 4. Simulation events and live network events must be distinguishable in the implementation.
 5. All final protocol behavior must be verified against the requirements in `SRS.md`.
+6. Live UDP datagram communication operates across native Node.js sockets (`dgram`), streaming telemetry to the React frontend over loopback WebSocket.
+
+---
+
+## 9. Live UDP Networking Sequence Diagrams (Phase 6)
+
+### 9.1 Two-Laptop UDP Handshake Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI_A as Laptop A Browser (UI)
+    participant Agent_A as Laptop A Agent
+    participant Agent_B as Laptop B Agent
+    participant UI_B as Laptop B Browser (UI)
+
+    UI_A->>Agent_A: CONNECT_PEER (target: IP_B:9000, protocol, windowSize)
+    Agent_A->>Agent_B: UDP HANDSHAKE_INIT (sessionId, protocol, windowSize, role: HOST_A)
+    Note over Agent_B: Validates parameters & initializes LiveSession
+    Agent_B->>UI_B: WS AGENT_STATUS_UPDATE (CONNECTED, role: HOST_B)
+    Agent_B->>Agent_A: UDP HANDSHAKE_ACK (sessionId, protocol, role: HOST_B)
+    Note over Agent_A: Transitions to CONNECTED & starts wall-clock timer
+    Agent_A->>UI_A: WS PEER_HANDSHAKE_SUCCESS & AGENT_STATUS_UPDATE
+```
+
+### 9.2 Live Message Exchange with ARQ Retransmission
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SenderUI as Host A UI
+    participant SenderAgent as Host A Agent
+    participant ReceiverAgent as Host B Agent
+    participant ReceiverUI as Host B UI
+
+    SenderUI->>SenderAgent: SEND_TEXT ("Network Flow Control")
+    SenderAgent->>ReceiverAgent: UDP DATA Frame [seq 0] (Dropped via fault injection)
+    Note over SenderAgent: ARQ Timer running (timeoutMs)
+    Note over SenderAgent: Timer expires! Initiates ARQ Retransmission
+    SenderAgent->>SenderUI: WS LIVE_PROTOCOL_EVENT (TIMEOUT / RETRANSMISSION)
+    SenderAgent->>ReceiverAgent: UDP DATA Frame [seq 0] (Retransmission)
+    ReceiverAgent->>ReceiverUI: WS MESSAGE_DELIVERED ("Network Flow Control")
+    ReceiverAgent->>SenderAgent: UDP ACK Frame [ackNum 0]
+    SenderAgent->>SenderUI: WS LIVE_PROTOCOL_EVENT (ACK_RECEIVED / Window Slid)
+```
+
+---
+
+**End of Document**
 
 ---
 

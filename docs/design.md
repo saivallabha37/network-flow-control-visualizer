@@ -189,12 +189,41 @@ Bridges existing protocol engines to the unified simulation engine:
 - **Retransmission Ratio:** $\text{Retransmitted Frames} / \text{Total Frames Transmitted}$.
 
 ### 10.6 Simulation Mode vs. Live UDP Mode
-| Dimension | Simulation Mode (Phase 4) | Live UDP Mode (Future Phase 5) |
+| Dimension | Simulation Mode (Phases 1–5) | Live UDP Mode (Phase 6) |
 |---|---|---|
-| **Transport** | Virtual in-memory channel (`VirtualChannel`) | Real OS UDP sockets (`dgram`) over LAN/Wi-Fi |
-| **Clock** | Deterministic virtual clock (`virtualTimeMs`) | Real-time system clock & event loop |
-| **Loss & Delay** | Controlled, seed-reproducible PRNG | Real physical network conditions |
-| **Telemetry** | Synchronous simulation event log | Local WebSocket stream to React frontend |
+| **Transport** | Virtual in-memory channel (`VirtualChannel`) | Real OS UDP datagrams (`dgram`) over LAN/Wi-Fi |
+| **Clock** | Deterministic virtual clock (`virtualTimeMs`) | Real-time wall-clock interval ticks (`tickIntervalMs`) |
+| **Loss & Delay** | Controlled, seed-reproducible Mulberry32 PRNG | Real physical LAN conditions + controlled fault injection |
+| **Telemetry** | Synchronous simulation event log | Loopback WebSocket stream (`127.0.0.1:8080`) to React visualizer |
+
+---
+
+## 11. Live UDP Networking Subsystem (Phase 6)
+
+### 11.1 Subsystem Overview
+The Live UDP Networking subsystem (`agent/src/live/`) allows two laptops on the same trusted Wi-Fi or Ethernet network to communicate using real UDP datagrams while preserving reliable in-order delivery through Stop-and-Wait, Go-Back-N, or Selective Repeat ARQ flow control.
+
+### 11.2 Component Responsibilities
+- **`NetworkingAgent` (`networking-agent.ts`):**
+  - Manages native Node.js UDP sockets (`dgram.Socket`) listening on `0.0.0.0:<udpPort>`.
+  - Manages a secure loopback-only WebSocket server (`127.0.0.1:<wsPort>`) connecting to the local browser UI.
+  - Implements bidirectional connection handshake (`HANDSHAKE_INIT` -> `HANDSHAKE_ACK` / `HANDSHAKE_REJECT`).
+  - Streams telemetry events and state updates to all connected browser clients.
+- **`LiveSession` (`live-session.ts`):**
+  - Coordinates protocol state machines with wall-clock stepping (`tick(deltaMs)` every 20ms).
+  - Handles outbound payload queueing, dynamic window capacity checks, and UDP packet dispatch.
+  - Handles incoming UDP datagrams (`DATA` and `ACK`), routing them to sender or receiver engines.
+  - Supports controlled fault injection (`dropNextData`, `dropNextAck`) for lab defense evaluations.
+- **`UdpCodec` (`udp-codec.ts`):**
+  - Safely serializes and validates UDP packets with boundary checks, schema validation, and 64 KB size limits.
+- **`FileTransferManager` (`file-transfer.ts`):**
+  - Handles small file chunking (1 KB chunks), directory isolation (`./received_files`), filename sanitization (`path.basename`), and SHA-256 cryptographic verification.
+
+### 11.3 Security & Safe Transport Safeguards
+1. **WebSocket Loopback Isolation:** The browser control server binds strictly to `127.0.0.1` to prevent unauthorized network agents from issuing commands.
+2. **Path Traversal Protection:** All incoming file transfers sanitize filenames via `path.basename` and regex scrubbing, disallowing `..`, slashes, null bytes, and non-printable characters.
+3. **Integrity Enforcement:** Transferred files are staged in temporary files until all chunks are assembled and the calculated SHA-256 matches the header's expected hash.
+4. **Packet Size Limits:** All datagrams are bounded to 65535 bytes with payload sizes restricted to safe MTU limits.
 
 ---
 

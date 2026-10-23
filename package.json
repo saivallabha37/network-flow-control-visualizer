@@ -12,7 +12,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:agent": "npm run dev --workspace=agent"
+    "dev:agent": "npm run dev --workspace=agent",
+    "agent:live": "npm --workspace=agent run agent:live --"
   },
   "keywords": [
     "flow-control",

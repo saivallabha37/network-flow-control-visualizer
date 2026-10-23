@@ -135,5 +135,102 @@ npm run build
 
 | Mode | Status | Description |
 |---|---|---|
-| **Simulation Mode** | **Implemented (Phases 1–5)** | Full in-memory deterministic simulation integrating Stop-and-Wait, Go-Back-N, and Selective Repeat ARQ. Powered by a virtual clock, Mulberry32 PRNG loss model, and live interactive React telemetry. |
-| **Live Networking Mode** | **Planned (Phase 6+)** | Physical Node.js networking agents communicating via native UDP datagrams (`dgram`) over local LAN/Wi-Fi, streaming real-time protocol telemetry to the browser via WebSockets. |
+| **Simulation Mode** | **Implemented (Phases 1–5.1)** | Full in-memory deterministic simulation integrating Stop-and-Wait, Go-Back-N, and Selective Repeat ARQ. Includes Space-Time (ladder) sequence diagrams, interactive packet inspector, smooth motion animation, theoretical channel utilization metrics, and 5 guided educational presets. |
+| **Live Networking Mode** | **Implemented (Phase 6)** | Real Node.js networking agents communicating via native UDP datagrams (`dgram`) over local LAN/Wi-Fi or loopback, bidirectional handshakes, ARQ flow control, chunked file transfer with SHA-256 verification, and real-time WebSocket telemetry to the React visualizer. |
+
+---
+
+## 7. Advanced Educational Visualization Features (Phase 5.1)
+
+### 1. Space-Time Sequence Diagram (Ladder / Bounce View)
+- Displays Sender (Host A) and Receiver (Host B) as vertical axes with virtual time progressing downward.
+- Draws diagonal vector trajectories for DATA frames ($A \to B$) and ACKs ($B \to A$).
+- Shows actual propagation delay slopes, dropped packets (marked with midpoint loss icons), retransmissions (amber dashed vectors), and timeout expirations.
+- Synchronized with the chronological event timeline: selecting an arrow highlights the corresponding event, and selecting an event highlights the diagram trajectory.
+- Features dynamic zoom scaling (30% to 250%) and auto-scroll tracking.
+
+### 2. Guided Lab Scenarios
+Curated educational presets with deterministic seeds designed to produce specific protocol outcomes:
+1. **Loss-Free Baseline:** Ideal transmission establishing regular window sliding without channel noise.
+2. **High-Latency Satellite Link:** Demonstrates the severe throughput penalty of Stop-and-Wait over large RTTs ($D = 150\text{ ms}$, RTT $= 300\text{ ms}$) versus pipelined windowing.
+3. **Go-Back-N Recovery:** Illustrates receiver discarding of subsequent out-of-order frames when a frame drops, followed by bulk retransmission of the entire window upon timer expiration.
+4. **Selective Repeat Buffering:** Demonstrates receiver-side out-of-order buffering, individual ACKs, retransmission of only the missing frame, and cascade delivery.
+5. **Lost Acknowledgement Recovery:** Demonstrates recovery when reverse ACKs are lost, including duplicate detection without repeated payload delivery.
+
+### 3. Interactive Packet Inspector
+- Clicking any in-flight packet in the channel animation or trajectory in the space-time diagram opens the Inspector.
+- Displays frame type (`DATA` / `ACK`), sequence/ACK number, payload text & byte size, CRC-32 integrity status, departure/arrival timestamps, and remaining in-flight delay.
+- Allows pausing playback directly to inspect transient packets, with a one-click resume button.
+- Strictly labels unexposed fields as "Unavailable" without inventing fake values.
+
+### 4. Theoretical Channel Utilization Metrics
+- Enhanced statistics panel displaying observed empirical delivery throughput side-by-side with theoretical link utilization:
+  - Stop-and-Wait: $U = \frac{T_{frame}}{T_{frame} + 2D} = \frac{1}{1 + 2a}$
+  - Pipelined Sliding Window: $U = \min\left(1, \frac{N \cdot T_{frame}}{T_{frame} + 2D}\right)$
+- Includes an educational metrics guide detailing all mathematical definitions and assumptions.
+
+---
+
+## 7. Two-Laptop Live UDP Networking (Phase 6 Guide)
+
+The visualizer supports real datagram communication between two physical laptops connected to the same Wi-Fi or local area network (LAN), as well as local loopback testing on a single machine.
+
+### Architecture Overview
+
+```
+Laptop A (Host A)                                 Laptop B (Host B)
+┌────────────────────────┐                       ┌────────────────────────┐
+│  React Browser UI      │                       │  React Browser UI      │
+│  (Vite port 5173)      │                       │  (Vite port 5173)      │
+└───────────┬────────────┘                       └───────────┬────────────┘
+            │ WebSocket (127.0.0.1:8080)                     │ WebSocket (127.0.0.1:8080)
+┌───────────▼────────────┐                       ┌───────────▼────────────┐
+│ Node.js Agent A        │      Real UDP         │ Node.js Agent B        │
+│ UDP Listen: 0.0.0.0:9000│ ◄───────────────────► │ UDP Listen: 0.0.0.0:9000│
+└────────────────────────┘     (Port 9000)       └────────────────────────┘
+```
+
+### Step-by-Step Setup Between Two Physical Laptops
+
+#### Step 1: Connect to the Same Wi-Fi / Local Network
+Ensure both Laptop A and Laptop B are connected to the same Wi-Fi or LAN subnet.
+
+#### Step 2: Determine Each Laptop's Local IP Address
+- **On Windows:** Open PowerShell/CMD and run `ipconfig`. Look for the IPv4 Address under your Wi-Fi or Ethernet adapter (e.g., `192.168.1.45`).
+- **On macOS/Linux:** Open Terminal and run `ifconfig` or `ip a` (e.g., `192.168.1.62`).
+
+#### Step 3: Firewall Access (Windows / macOS)
+Ensure incoming UDP on port `9000` is permitted through the local firewall:
+- When prompted by Windows Defender or macOS security dialog on first run, select **Allow Access for Private Networks**.
+
+#### Step 4: Start the Networking Agent on Both Laptops
+- **On Laptop A:**
+  ```bash
+  npm run agent:live -- --udp 9000 --ws 8080
+  ```
+- **On Laptop B:**
+  ```bash
+  npm run agent:live -- --udp 9000 --ws 8080
+  ```
+*(Note: If running on a single laptop for testing, use distinct UDP and WS ports: e.g. Laptop A on `--udp 9000 --ws 8080` and Laptop B on `--udp 9001 --ws 8081`.)*
+
+#### Step 5: Launch the Frontend Visualizer
+On both laptops, start the web interface:
+```bash
+npm run dev:frontend
+```
+Open `http://localhost:5173` in your browser.
+
+#### Step 6: Connect and Exchange Protocol Data
+1. In the header bar, click **Live UDP Network**.
+2. Verify the local agent status displays **Agent Online** (`ws://127.0.0.1:8080`).
+3. Under **Two-Laptop Peer Connection**:
+   - On Laptop A: Enter Laptop B's LAN IP (e.g. `192.168.1.62`) and UDP port `9000`.
+   - Select the desired protocol: **Stop-and-Wait ARQ**, **Go-Back-N ARQ**, or **Selective Repeat ARQ**.
+   - Click **Initiate Handshake with Peer**.
+4. Both laptops will transition to **Connected to Peer** (`HOST_A` and `HOST_B`).
+5. **Send Text:** Type a message and click **Transmit Datagram**. Observe real-time frame transmission, sequence numbering, and ACK delivery.
+6. **Send Small File:** Select a file (e.g. text notes, images up to 10 MB) and click **Send File**. The agent chunks the file into 1 KB datagrams, transmits them across the ARQ engine, verifies SHA-256 upon assembly, and writes to `./received_files/`.
+7. **Simulate Faults for Project Defense:**
+   - Click **Drop Next DATA Frame** or **Drop Next Outgoing ACK**.
+   - Transmit a message. Observe the timer count down and the sender automatically initiate retransmission across the real UDP socket!

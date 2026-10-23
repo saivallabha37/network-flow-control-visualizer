@@ -56,4 +56,25 @@ This document maps the Software Requirements Specification (SRS) to the system c
 
 ## 5. Current Status
 
-This matrix represents the initial design baseline. Implementation status and test results will be updated throughout development.
+| Requirement ID | Description | Component Mapping | Verification Test(s) | Status |
+|---|---|---|---|---|
+| FR-01 | Protocol Selection (Stop-and-Wait, GBN, SR) | `ProtocolSelector.tsx`, `protocols/` | TC-SW-01..12, TC-GBN-01..13, TC-SR-01..15, TC-FE-01..02 | **VERIFIED (PASS)** |
+| FR-02 | Simulation Configuration | `SimulationConfigPanel.tsx`, `simulation-config.ts` | TC-SIM-01..03, TC-FE-03 | **VERIFIED (PASS)** |
+| FR-03 | Sender Visualization & Window State | `NetworkTopology.tsx` | TC-FE-04, TC-FE-10 | **VERIFIED (PASS)** |
+| FR-04 | Receiver Visualization & Buffering | `NetworkTopology.tsx` | TC-SR-07..08, TC-FE-10 | **VERIFIED (PASS)** |
+| FR-05 | Frame Transmission & Trajectory Mapping | `virtual-channel.ts`, `SpaceTimeDiagram.tsx`, `PacketInspector.tsx` | TC-SIM-04..06, TC-FE-11, TC-FE-13..14 | **VERIFIED (PASS)** |
+| FR-06 | Acknowledgement Generation & Processing | Protocol Engines, `protocol-adapters.ts` | TC-SW-04, TC-GBN-03..04, TC-SR-04..05 | **VERIFIED (PASS)** |
+| FR-07 | Error Simulation (Loss, Delay, Corruption) | `virtual-channel.ts` | TC-SIM-07..08, TC-FE-12, TC-FE-16..19 | **VERIFIED (PASS)** |
+| FR-08 | Timeout Detection & Recovery | Protocol Adapters, Engine Timers | TC-SW-06, TC-GBN-10, TC-SR-12..13, TC-SIM-07 | **VERIFIED (PASS)** |
+| FR-09 | Retransmission Mechanics | Protocol Engines | TC-SW-07, TC-GBN-10, TC-SR-12, TC-SIM-09..10 | **VERIFIED (PASS)** |
+| FR-10 | Execution Controls (Play, Pause, Step, Reset) | `simulation-engine.ts`, `SimulationControls.tsx` | TC-SIM-11..14, TC-FE-05..06 | **VERIFIED (PASS)** |
+| FR-11 | Event Logging & Space-Time Correlation | `simulation-events.ts`, `EventTimeline.tsx` | TC-FE-07, TC-FE-11 | **VERIFIED (PASS)** |
+| FR-12 | Live UDP Communication | `networking-agent.ts`, `udp-codec.ts` | TC-LIVE-01..03, TC-LIVE-09, TC-LIVE-11..15 | **VERIFIED (PASS local loopback; physical multi-laptop deferred)** |
+| FR-13 | Live Text Message Transfer | `live-session.ts`, `LiveNetworkingPanel.tsx` | TC-LIVE-04..05 | **VERIFIED (PASS local loopback; physical multi-laptop deferred)** |
+| FR-14 | Live Chunked File Transfer | `file-transfer.ts`, `LiveNetworkingPanel.tsx` | TC-LIVE-06..08, TC-LIVE-16..19 | **VERIFIED (PASS)** |
+| FR-15 | Data Integrity (CRC-32 & SHA-256) | `checksum.ts`, `frame-codec.ts`, `file-transfer.ts` | TC-FC-01..07, TC-LIVE-06, TC-LIVE-15 | **VERIFIED (PASS)** |
+| FR-16 | Transmission Statistics & Utilization | `simulation-stats.ts`, `StatisticsPanel.tsx` | TC-SIM-15, TC-FE-08 | **VERIFIED (PASS)** |
+| FR-17 | Protocol Comparison Benchmark | `protocol-comparison.ts`, `ProtocolComparisonModal.tsx` | TC-COMP-01..02, TC-FE-COMP-01..02 | **VERIFIED (PASS)** |
+| FR-18 | Live Connection & Session Status | `LiveNetworkingPanel.tsx`, `Header.tsx` | TC-LIVE-10 | **VERIFIED (PASS)** |
+
+All automated unit, integration, and scenario tests pass cleanly across agent and frontend workspaces.
