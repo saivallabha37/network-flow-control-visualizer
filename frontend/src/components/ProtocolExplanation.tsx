@@ -1,7 +1,7 @@
 import React from 'react';
 import { ProtocolType } from '@agent';
 import { PROTOCOL_INFO } from '../types/visualizer';
-import { BookOpen, Check, X, ShieldAlert } from 'lucide-react';
+import { BookOpen, Check, X } from 'lucide-react';
 
 interface ProtocolExplanationProps {
   protocol: ProtocolType;
@@ -92,14 +92,6 @@ export const ProtocolExplanation: React.FC<ProtocolExplanationProps> = ({ protoc
             ))}
           </ul>
         </div>
-      </div>
-
-      {/* Distinction Note */}
-      <div className="p-2.5 rounded-lg bg-indigo-950/30 border border-indigo-800/40 text-[11px] text-indigo-300/90 flex items-center gap-2">
-        <ShieldAlert className="w-4 h-4 shrink-0 text-indigo-400" />
-        <span>
-          <strong>Software Engineering Note:</strong> All visual states, packet journeys, and metric counts are calculated directly by the TypeScript protocol state machine and virtual channel.
-        </span>
       </div>
     </div>
   );

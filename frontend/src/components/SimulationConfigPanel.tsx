@@ -40,9 +40,9 @@ export const SimulationConfigPanel: React.FC<SimulationConfigPanelProps> = ({
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <h3 className="text-sm font-semibold text-white flex items-center gap-2">
           <Sliders className="w-4 h-4 text-indigo-400" />
-          Network & Protocol Parameters
+          Network &amp; Protocol Parameters
         </h3>
-        <span className="text-xs text-slate-400">Deterministic Channel Model</span>
+        <span className="text-xs text-slate-400">Configurable Channel Conditions</span>
       </div>
 
       {error && (
@@ -65,8 +65,13 @@ export const SimulationConfigPanel: React.FC<SimulationConfigPanelProps> = ({
             disabled={disabled}
             value={payloadText}
             onChange={(e) => handlePayloadsChange(e.target.value)}
+            onBlur={() => {
+              if (!payloadText.trim()) {
+                setPayloadText(config.payloads.join(', '));
+              }
+            }}
             className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50"
-            placeholder="Chunk 0, Chunk 1, Chunk 2..."
+            placeholder="Packet #0, Packet #1, Packet #2..."
           />
           <span className="text-[11px] text-slate-500 mt-1 block">
             {config.payloads.length} payloads configured for transfer.
@@ -216,6 +221,28 @@ export const SimulationConfigPanel: React.FC<SimulationConfigPanelProps> = ({
             className="w-full accent-amber-500 disabled:opacity-50"
           />
           <span className="text-[10px] text-slate-500 mt-0.5 block">Reverse channel drop rate</span>
+        </div>
+
+        {/* Corruption Rate (CRC Bit Inversion) */}
+        <div>
+          <div className="flex justify-between text-xs font-medium text-slate-300 mb-1">
+            <span>Corruption Rate</span>
+            <span className="font-mono text-purple-400">{Math.round((config.corruptionRate ?? 0) * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={0.5}
+            step={0.05}
+            disabled={disabled}
+            value={config.corruptionRate ?? 0}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              onUpdateConfig((prev) => ({ ...prev, corruptionRate: val }));
+            }}
+            className="w-full accent-purple-500 disabled:opacity-50"
+          />
+          <span className="text-[10px] text-slate-500 mt-0.5 block">Bit inversion &amp; CRC mismatch</span>
         </div>
 
         {/* Retry Limit */}

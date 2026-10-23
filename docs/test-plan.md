@@ -257,3 +257,35 @@ For each executed test, record:
 | TC-FE-08 | Frontend Visualizer | Statistics calculations and empty state handling without division-by-zero | **PASS** |
 | TC-FE-09 | Frontend Visualizer | Simulation failure and retry exhaustion handling | **PASS** |
 | TC-FE-10 | Frontend Visualizer | Selective Repeat out-of-order buffering and cascade delivery integration | **PASS** |
+| TC-FE-11 | Space-Time Diagram | Trajectory mapping for DATA frames and ACKs with propagation slope | **PASS** |
+| TC-FE-12 | Space-Time Diagram | Dropped packet truncation, loss icon rendering, and timeout markers | **PASS** |
+| TC-FE-13 | Packet Inspector | Field extraction for DATA/ACK types, seq/ack nums, and CRC-32 integrity | **PASS** |
+| TC-FE-14 | Packet Inspector | Remaining in-flight delay calculation and unexposed field unavailability labels | **PASS** |
+| TC-FE-15 | Guided Scenarios | Loss-free baseline: zero loss and clean window advancement | **PASS** |
+| TC-FE-16 | Guided Scenarios | High-latency link: Stop-and-Wait throughput degradation over large RTT | **PASS** |
+| TC-FE-17 | Guided Scenarios | Go-Back-N loss recovery: frame drop, out-of-order discard, bulk retransmission | **PASS** |
+| TC-FE-18 | Guided Scenarios | Selective Repeat buffering: frame drop, buffering, individual retx, cascade | **PASS** |
+| TC-FE-19 | Guided Scenarios | Lost ACK recovery: reverse drop handling without duplicate delivery | **PASS** |
+| TC-LIVE-01 | Live UDP Codec | Serializes and deserializes typed UDP packets (HANDSHAKE, DATA, ACK, FILE) | **PASS** |
+| TC-LIVE-02 | Live UDP Codec | Rejects empty, oversized (>64KB), or corrupt datagrams | **PASS** |
+| TC-LIVE-03 | Live Networking | Full bidirectional two-way handshake over UDP between Host A and Host B | **PASS** |
+| TC-LIVE-04 | Live Networking | Stop-and-Wait live text transmission and ACK verification over UDP | **PASS** |
+| TC-LIVE-05 | Live Networking | Go-Back-N dropped datagram recovery via wall-clock ARQ timeout retransmission | **PASS** |
+| TC-LIVE-06 | Live File Transfer | File chunking, assembly, and SHA-256 cryptographic verification | **PASS** |
+| TC-LIVE-07 | Live File Transfer | Path traversal prevention and unsafe filename sanitization | **PASS** |
+| TC-LIVE-08 | Live File Transfer | Rejection and cleanup of corrupted file chunks | **PASS** |
+| TC-LIVE-09 | Live Networking | Clean remote session disconnection and status return to LISTENING | **PASS** |
+| TC-LIVE-10 | Frontend Live Mode | WebSocket client connection and role synchronization | **PASS** |
+| TC-LIVE-11 | Live UDP Codec | Schema validation and Selective Repeat $M \ge 2N$ mathematical constraint enforcement | **PASS** |
+| TC-LIVE-12 | Live Networking | Selective Repeat multi-frame transmission and independent frame retransmission over UDP | **PASS** |
+| TC-LIVE-13 | Live Handshake | Invalid parameter rejection ($M < 2N$) with safe state transition to ERROR | **PASS** |
+| TC-LIVE-14 | Live WebSocket | Command schema validation, malformed payload error reporting, and loopback binding | **PASS** |
+| TC-LIVE-15 | Live Isolation | Foreign session ID rejection and CRC-32 corrupted frame discarding over UDP | **PASS** |
+| TC-LIVE-16 | Live File Transfer | Resilient self-describing chunk auto-initialization when raw FILE_HEADER is lost | **PASS** |
+| TC-LIVE-17 | Live File Transfer | Out-of-order and duplicate chunk arrival reassembly with SHA-256 match | **PASS** |
+| TC-LIVE-18 | Live File Transfer | Accidental overwrite prevention via atomic unique path generation on disk | **PASS** |
+| TC-LIVE-19 | Live File Transfer | Safe UDP payload bounding (768B chunks -> ~1.2KB datagram < 1472B MTU limit) | **PASS** |
+| TC-COMP-01 | Protocol Comparison | Runs 3 protocols under identical link parameters and returns comparative metrics | **PASS** |
+| TC-COMP-02 | Protocol Comparison | Proves pipelined window speedup over Stop-and-Wait on high RTT links | **PASS** |
+| TC-FE-COMP-01 | Frontend Comparison | Generates side-by-side benchmark matrix with delivery status and duration | **PASS** |
+| TC-FE-COMP-02 | Frontend Comparison | Validates theoretical link utilization formulas against window capacity | **PASS** |

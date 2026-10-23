@@ -12,7 +12,11 @@ export * from './simulation/simulation-events.js';
 export * from './simulation/simulation-stats.js';
 export * from './simulation/virtual-channel.js';
 export * from './simulation/protocol-adapters.js';
+export * from './simulation/protocol-comparison.js';
 export * from './simulation/simulation-engine.js';
+
+// Live Protocol & Telemetry Types
+export * from './live/live-types.js';
 
 export function getAgentVersion(): string {
   return '0.1.0';
