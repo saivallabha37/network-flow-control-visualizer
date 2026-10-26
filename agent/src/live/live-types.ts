@@ -115,6 +115,8 @@ export type WsClientCommandType =
   | 'DISCONNECT_PEER'
   | 'SEND_TEXT'
   | 'SEND_FILE'
+  | 'LIST_RECEIVED_FILES'
+  | 'DOWNLOAD_FILE'
   | 'SET_TEST_FAULT'; // Optional controlled fault injection
 
 export interface StartListenerCmd {
@@ -137,6 +139,16 @@ export interface ConnectPeerCmd {
 export interface SendTextCmd {
   command: 'SEND_TEXT';
   text: string;
+  clientMessageId?: string;
+}
+
+export interface ListReceivedFilesCmd {
+  command: 'LIST_RECEIVED_FILES';
+}
+
+export interface DownloadFileCmd {
+  command: 'DOWNLOAD_FILE';
+  filename: string;
 }
 
 export interface SendFileCmd {
@@ -163,6 +175,8 @@ export type WsClientCommand =
   | ConnectPeerCmd
   | SendTextCmd
   | SendFileCmd
+  | ListReceivedFilesCmd
+  | DownloadFileCmd
   | DisconnectPeerCmd
   | SetTestFaultCmd;
 
@@ -174,9 +188,19 @@ export type WsServerEventType =
   | 'LIVE_PROTOCOL_EVENT'
   | 'LIVE_STATISTICS_UPDATE'
   | 'MESSAGE_DELIVERED'
+  | 'MESSAGE_STATUS_UPDATE'
   | 'FILE_TRANSFER_PROGRESS'
   | 'FILE_DELIVERED'
+  | 'RECEIVED_FILES_LIST'
+  | 'FILE_DOWNLOAD_DATA'
   | 'AGENT_ERROR';
+
+export interface VerifiedFileInfo {
+  filename: string;
+  fileSize: number;
+  sha256: string;
+  receivedAt: number;
+}
 
 export interface LiveTelemetryEvent {
   id: string;

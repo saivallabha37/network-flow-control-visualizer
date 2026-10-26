@@ -40,6 +40,11 @@ export interface LiveSessionConfig {
     payloadType: 'TEXT' | 'FILE_CHUNK',
     transferId?: string
   ) => void;
+  onMessageStatusUpdate?: (
+    clientMessageId: string,
+    status: 'SENDING' | 'SENT' | 'DELIVERED' | 'FAILED',
+    seqNum?: number
+  ) => void;
   onError: (error: string) => void;
   onStatsUpdate?: (stats: ProtocolStatistics) => void;
 }
@@ -48,11 +53,13 @@ interface QueuedPayload {
   payload: string;
   payloadType: 'TEXT' | 'FILE_CHUNK';
   transferId?: string;
+  clientMessageId?: string;
 }
 
 interface FrameMeta {
   payloadType: 'TEXT' | 'FILE_CHUNK';
   transferId?: string;
+  clientMessageId?: string;
 }
 
 export class LiveSession {
@@ -151,6 +158,11 @@ export class LiveSession {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    for (const [seq, meta] of this.frameMetadata.entries()) {
+      if (meta.clientMessageId) {
+        this.config.onMessageStatusUpdate?.(meta.clientMessageId, 'FAILED', seq);
+      }
+    }
     this.outboundQueue = [];
     this.frameMetadata.clear();
   }
@@ -161,14 +173,22 @@ export class LiveSession {
   public queuePayload(
     payload: string,
     payloadType: 'TEXT' | 'FILE_CHUNK' = 'TEXT',
-    transferId?: string
+    transferId?: string,
+    clientMessageId?: string
   ): void {
     if (this.outboundQueue.length >= MAX_OUTBOUND_QUEUE_SIZE) {
+      if (clientMessageId) {
+        this.config.onMessageStatusUpdate?.(clientMessageId, 'FAILED');
+      }
       this.config.onError(`Outbound payload queue full (${MAX_OUTBOUND_QUEUE_SIZE}). Throttling sender.`);
       return;
     }
 
-    this.outboundQueue.push({ payload, payloadType, transferId });
+    if (clientMessageId) {
+      this.config.onMessageStatusUpdate?.(clientMessageId, 'SENDING');
+    }
+
+    this.outboundQueue.push({ payload, payloadType, transferId, clientMessageId });
     this.drainQueue();
   }
 
@@ -228,6 +248,9 @@ export class LiveSession {
     }
 
     if (!sendResult.success || !sendResult.frame) {
+      if (item.clientMessageId) {
+        this.config.onMessageStatusUpdate?.(item.clientMessageId, 'FAILED');
+      }
       this.config.onError(`Failed to send frame: ${sendResult.error}`);
       return;
     }
@@ -238,7 +261,12 @@ export class LiveSession {
     this.frameMetadata.set(frame.seqNum, {
       payloadType: item.payloadType,
       transferId: item.transferId,
+      clientMessageId: item.clientMessageId,
     });
+
+    if (item.clientMessageId) {
+      this.config.onMessageStatusUpdate?.(item.clientMessageId, 'SENT', frame.seqNum);
+    }
 
     // Check fault injection
     if (this.dropNextData) {
@@ -403,6 +431,11 @@ export class LiveSession {
     if (this.sawSender) {
       this.sawSender.onAckReceived(packet.frame);
       if (this.sawSender.getStatus() === 'IDLE') {
+        for (const [seq, meta] of this.frameMetadata.entries()) {
+          if (meta.clientMessageId) {
+            this.config.onMessageStatusUpdate?.(meta.clientMessageId, 'DELIVERED', seq);
+          }
+        }
         this.frameMetadata.clear();
       }
     } else if (this.gbnSender) {
@@ -421,20 +454,29 @@ export class LiveSession {
     const win = this.getSenderWindowState();
     // Prune sequence numbers that are no longer unacknowledged
     for (const seq of Array.from(this.frameMetadata.keys())) {
+      const meta = this.frameMetadata.get(seq);
+      let isAcked = false;
+
       if (this.gbnSender) {
         const base = this.gbnSender.getBase();
         const next = this.gbnSender.getNextSeqNum();
-        const m = win.windowSize * 2;
         // In GBN, anything before base is acknowledged
         if (seq !== base && (next >= base ? seq < base : seq < base && seq >= next)) {
-          this.frameMetadata.delete(seq);
+          isAcked = true;
         }
       } else if (this.srSender) {
         const slots = this.srSender.getSlots();
         const stillOutstanding = slots.some((s) => s.seqNum === seq && !s.acknowledged);
         if (!stillOutstanding) {
-          this.frameMetadata.delete(seq);
+          isAcked = true;
         }
+      }
+
+      if (isAcked) {
+        if (meta?.clientMessageId) {
+          this.config.onMessageStatusUpdate?.(meta.clientMessageId, 'DELIVERED', seq);
+        }
+        this.frameMetadata.delete(seq);
       }
     }
   }
@@ -515,6 +557,11 @@ export class LiveSession {
     }
 
     if (failed) {
+      for (const [seq, meta] of this.frameMetadata.entries()) {
+        if (meta.clientMessageId) {
+          this.config.onMessageStatusUpdate?.(meta.clientMessageId, 'FAILED', seq);
+        }
+      }
       this.stop(); // Cease timer on retry exhaustion
       this.config.onError(
         `Session transmission failed: Maximum retransmission limit (${this.config.maxRetries}) reached.`

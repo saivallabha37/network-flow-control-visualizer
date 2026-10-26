@@ -161,5 +161,43 @@ describe('FileTransferManager', () => {
     // After cancel, internal transfer state is discarded
     expect(manager.getActiveIncomingTransfers()).toHaveLength(0);
   });
+
+  it('lists verified completed files in storage directory ignoring temporary files', () => {
+    // Write completed files
+    fs.writeFileSync(path.join(tempDir, 'document.pdf'), 'PDF content payload');
+    fs.writeFileSync(path.join(tempDir, 'notes.txt'), 'Plain text note');
+    // Write temporary chunk file (should be ignored)
+    fs.writeFileSync(path.join(tempDir, 'notes.txt.tmp_123'), 'Incomplete chunk data');
+    // Write hidden file (should be ignored)
+    fs.writeFileSync(path.join(tempDir, '.hidden_meta'), 'Secret data');
+
+    const completed = manager.getCompletedFiles();
+    expect(completed).toHaveLength(2);
+    const filenames = completed.map((f) => f.filename);
+    expect(filenames).toContain('document.pdf');
+    expect(filenames).toContain('notes.txt');
+    expect(filenames).not.toContain('notes.txt.tmp_123');
+    expect(filenames).not.toContain('.hidden_meta');
+
+    const pdfInfo = completed.find((f) => f.filename === 'document.pdf');
+    expect(pdfInfo?.sha256).toBe(FileTransferManager.computeSha256(Buffer.from('PDF content payload')));
+    expect(pdfInfo?.fileSize).toBe(Buffer.from('PDF content payload').length);
+  });
+
+  it('safely reads completed file with correct MIME type and prevents path traversal', () => {
+    const rawContent = 'Hello Antigravity visualizer';
+    fs.writeFileSync(path.join(tempDir, 'hello.txt'), rawContent);
+
+    const result = manager.readCompletedFile('hello.txt');
+    expect(result.filename).toBe('hello.txt');
+    expect(result.mimeType).toBe('text/plain');
+    expect(Buffer.from(result.dataBase64, 'base64').toString('utf-8')).toBe(rawContent);
+    expect(result.sha256).toBe(FileTransferManager.computeSha256(Buffer.from(rawContent)));
+
+    // Rejection of directory traversal
+    expect(() => manager.readCompletedFile('../../outside.txt')).toThrow();
+    // Rejection of non-existent file
+    expect(() => manager.readCompletedFile('non_existent.txt')).toThrow('File not found');
+  });
 });
 

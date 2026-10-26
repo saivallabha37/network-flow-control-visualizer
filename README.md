@@ -204,33 +204,41 @@ Ensure incoming UDP on port `9000` is permitted through the local firewall:
 - When prompted by Windows Defender or macOS security dialog on first run, select **Allow Access for Private Networks**.
 
 #### Step 4: Start the Networking Agent on Both Laptops
-- **On Laptop A:**
-  ```bash
-  npm run agent:live -- --udp 9000 --ws 8080
-  ```
-- **On Laptop B:**
-  ```bash
-  npm run agent:live -- --udp 9000 --ws 8080
-  ```
+You can launch the agent using any of these methods (no VS Code required!):
+- **Option A (1-Click Batch):** Double-click `start-agent.bat` in the project root.
+- **Option B (Silent Background):** Double-click `scripts/windows/start-agent-background.vbs`.
+- **Option C (CLI):**
+  - **On Laptop A:**
+    ```bash
+    npm run agent:live -- --udp 9000 --ws 8080
+    ```
+  - **On Laptop B:**
+    ```bash
+    npm run agent:live -- --udp 9000 --ws 8080
+    ```
 *(Note: If running on a single laptop for testing, use distinct UDP and WS ports: e.g. Laptop A on `--udp 9000 --ws 8080` and Laptop B on `--udp 9001 --ws 8081`.)*
 
 #### Step 5: Launch the Frontend Visualizer
-On both laptops, start the web interface:
-```bash
-npm run dev:frontend
-```
-Open `http://localhost:5173` in your browser.
+- **Local Dev:** Run `npm run dev:frontend` and open `http://localhost:5173`.
+- **Vercel Deployment:** Open your deployed URL (`https://<project>.vercel.app`).
+  - *Tip for Vercel HTTPS:* Ensure your browser allows loopback WebSocket connections (`ws://127.0.0.1:8080`) by setting *Insecure content* to *Allow* in Site settings. See [docs/windows-and-vercel-guide.md](docs/windows-and-vercel-guide.md) for full instructions.
 
 #### Step 6: Connect and Exchange Protocol Data
 1. In the header bar, click **Live UDP Network**.
 2. Verify the local agent status displays **Agent Online** (`ws://127.0.0.1:8080`).
-3. Under **Two-Laptop Peer Connection**:
+3. Under **Peer Handshake & Protocol Setup**:
    - On Laptop A: Enter Laptop B's LAN IP (e.g. `192.168.1.62`) and UDP port `9000`.
    - Select the desired protocol: **Stop-and-Wait ARQ**, **Go-Back-N ARQ**, or **Selective Repeat ARQ**.
    - Click **Initiate Handshake with Peer**.
-4. Both laptops will transition to **Connected to Peer** (`HOST_A` and `HOST_B`).
-5. **Send Text:** Type a message and click **Transmit Datagram**. Observe real-time frame transmission, sequence numbering, and ACK delivery.
-6. **Send Small File:** Select a file (e.g. text notes, images up to 10 MB) and click **Send File**. The agent chunks the file into 1 KB datagrams, transmits them across the ARQ engine, verifies SHA-256 upon assembly, and writes to `./received_files/`.
-7. **Simulate Faults for Project Defense:**
+4. Both laptops transition to **Connected to Peer** (`HOST_A` and `HOST_B`).
+5. **Bidirectional Live Chat:**
+   - Type a message and press **Enter** (Shift+Enter for newline).
+   - Watch real-time delivery status progression: *Sending...*, *Transmitted on UDP [seq N]*, *Delivered & ACKed*, or *Failed*.
+   - Incoming messages appear immediately without retransmission duplicates.
+6. **Safe Chunked File Transfer & Browser Downloads:**
+   - Select a file and click **Send File**. The agent slices the file into safe 768-byte chunks, hashes it with SHA-256, and reliably transmits it over the active ARQ flow control protocol.
+   - The **Received Files Dashboard** shows all verified files received on this laptop.
+   - Click **Download** next to any received file to save it directly into your browser's **Downloads folder** via the agent API.
+7. **Simulate Faults on Demand:**
    - Click **Drop Next DATA Frame** or **Drop Next Outgoing ACK**.
    - Transmit a message. Observe the timer count down and the sender automatically initiate retransmission across the real UDP socket!
