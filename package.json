@@ -17,7 +17,9 @@
     "agent:service:install": "call scripts\\windows\\install-startup.bat",
     "agent:service:uninstall": "call scripts\\windows\\uninstall-startup.bat",
     "agent:service:status": "call scripts\\windows\\status-agent.bat",
-    "agent:stop": "call scripts\\windows\\stop-agent.bat"
+    "agent:stop": "call scripts\\windows\\stop-agent.bat",
+    "cert:trust": "call scripts\\windows\\trust-cert.bat",
+    "cert:untrust": "call scripts\\windows\\untrust-cert.bat"
   },
   "keywords": [
     "flow-control",

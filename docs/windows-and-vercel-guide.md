@@ -10,12 +10,15 @@ The repository includes pre-configured Windows batch and VBScript automation run
 
 ### Option A: 1-Click Visible Console Runner
 - Simply double-click **`start-agent.bat`** in the project root.
-- A terminal window will open, listen for incoming peer UDP datagrams on port `9000`, and establish the local loopback WebSocket server on `127.0.0.1:8080`.
+- A terminal window will open and start the Networking Agent with dual WebSocket listeners:
+  - **Standard WebSocket:** `ws://127.0.0.1:8080` (for local HTTP development)
+  - **Secure WebSocket (TLS):** `wss://127.0.0.1:8443` (for HTTPS deployments like Vercel)
+  - **Real UDP Socket:** Listening on `0.0.0.0:9000` for physical network datagrams.
 - To stop the agent, press `Ctrl+C` or close the window.
 
 ### Option B: Silent Background Execution (Hidden Window)
 - Double-click **`scripts/windows/start-agent-background.vbs`**.
-- The Networking Agent runs completely invisibly in the background with no pop-up command prompt.
+- The Networking Agent runs completely invisibly in the background with both port 8080 and port 8443 active.
 - To check if the agent is active:
   - Double-click **`status-agent.bat`** in the root, or run:
     ```bash
@@ -53,26 +56,46 @@ New-NetFirewallRule -DisplayName "NFCV Live UDP 9000 Outbound" -Direction Outbou
 
 ---
 
-## 3. Connecting Vercel HTTPS Deployment to Local Networking Agent
+## 3. Local Networking Agent & Vercel HTTPS Architecture
 
-When you access the visualizer via its deployed Vercel URL (e.g., `https://network-flow-control-visualizer.vercel.app`), the web page is served over **HTTPS**, while your local networking agent listens on loopback (`ws://127.0.0.1:8080`).
+When you access the visualizer via its deployed Vercel URL (e.g., `https://network-flow-control-visualizer.vercel.app`), the web page is served over **HTTPS**, while your local networking agent runs on loopback `127.0.0.1` on each laptop.
 
-Modern web browsers enforce Mixed Content security restrictions. Here is how to connect seamlessly:
+### Understanding Browser Mixed-Content Architecture
+Modern web browsers enforce strict Mixed Content policies: pages served over secure `https://` (such as `https://network-flow-control-visualizer.vercel.app`) cannot establish unencrypted `ws://` WebSocket connections.
 
-### Step 1: Ensure Local Agent is Running
-Start the agent on your laptop using `start-agent.bat` or `npm run agent:live`.
+To provide a secure and clean environment without compromising browser security:
 
-### Step 2: Allow Loopback / Insecure Content in Browser
-When accessing the HTTPS site on Chrome or Edge:
-1. Click the **Site Information / Tune icon** to the left of the URL bar (next to `https://...`).
-2. Select **Site settings**.
-3. Scroll down to **Insecure content**.
-4. Change the dropdown from *Block (default)* to **Allow**.
-5. Return to the visualizer tab and refresh the page (`F5` or `Ctrl+R`).
-6. The top status bar will immediately display **Agent Online**.
+#### Option A: Zero-Configuration Local Development (Fastest Local Evaluation)
+1. Run the frontend locally on your laptop:
+   ```bash
+   npm run dev:frontend
+   ```
+2. Open `http://localhost:5173`.
+3. Because the site is served over standard `http://`, the browser connects to `ws://127.0.0.1:8080` immediately without certificate requirements or mixed-content restrictions.
+
+#### Option B: Secure Local Agent Endpoint (WSS / TLS on Port 8443)
+The local agent automatically runs a **dual-listener architecture**: it binds `ws://127.0.0.1:8080` and `wss://127.0.0.1:8443` concurrently using the bundled local loopback certificates in `agent/certs/`.
+
+Because modern browsers require TLS trust for `wss://`, complete this simple one-time setup on Windows:
+
+1. **One-Click Windows Certificate Trust (Recommended):**
+   - Double-click **`scripts/windows/trust-cert.bat`** (or run `npm run cert:trust`).
+   - This registers `agent/certs/cert.pem` into the Windows Current User Trusted Root store using standard Windows `certutil`.
+   - Chrome and Edge will now natively trust `wss://127.0.0.1:8443` with zero interstitial warnings.
+   - *(To remove the certificate at any time, run `scripts/windows/untrust-cert.bat` or `npm run cert:untrust`).*
+
+2. **Alternative: Browser One-Click Authorization:**
+   - With `start-agent.bat` running, open `https://127.0.0.1:8443` in a new browser tab.
+   - Click **Advanced** &rarr; **Proceed to 127.0.0.1 (unsafe)**.
+   - Return to your Vercel tab and click **Retry Connection**.
+
+3. **Open the Deployed Vercel Website:**
+   - Visit `https://network-flow-control-visualizer.vercel.app`.
+   - The web app opens directly to the **Live UDP Network** tab and connects securely to `wss://127.0.0.1:8443`.
+   - The status badge will display **Agent Online**.
 
 > [!NOTE]
-> Loopback WebSocket binding is strictly confined to `127.0.0.1`. The local agent's management interface is never exposed to the wider LAN or internet, ensuring robust host security.
+> Loopback WebSocket binding is strictly confined to `127.0.0.1`. The local agent's management interface is never exposed to the wider LAN or internet, and it automatically validates incoming client origins (`localhost`, `127.0.0.1`, and `*.vercel.app`) to prevent Cross-Site WebSocket Hijacking.
 
 ---
 

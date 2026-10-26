@@ -11,9 +11,9 @@ projectDir = fso.GetParentFolderName(fso.GetParentFolderName(scriptDir))
 
 ' Check if agent distribution exists or fallback to npx tsx
 If fso.FileExists(projectDir & "\agent\dist\live\cli.js") Then
-    cmd = "node """ & projectDir & "\agent\dist\live\cli.js"" --udp 9000 --ws 8080"
+    cmd = "node """ & projectDir & "\agent\dist\live\cli.js"" --udp 9000 --ws 8080 --wss 8443"
 Else
-    cmd = "cmd.exe /c cd /d """ & projectDir & """ && npx tsx agent/src/live/cli.ts --udp 9000 --ws 8080"
+    cmd = "cmd.exe /c cd /d """ & projectDir & """ && npx tsx agent/src/live/cli.ts --udp 9000 --ws 8080 --wss 8443"
 End If
 
 ' Run completely hidden without creating a visible console window (0 = hide)

@@ -22,6 +22,7 @@ import {
   HardDrive,
   Trash2,
   ExternalLink,
+  ShieldCheck,
 } from 'lucide-react';
 import { ProtocolType } from '@agent';
 import { useLiveAgent } from '../hooks/useLiveAgent';
@@ -30,8 +31,9 @@ export const LiveNetworkingPanel: React.FC = () => {
   const {
     wsUrl,
     setWsUrl,
+    connectionStatus,
     isWsConnected,
-    connectWs,
+    retryConnect,
     agentState,
     events,
     chatMessages,
@@ -138,6 +140,9 @@ export const LiveNetworkingPanel: React.FC = () => {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const isConnectingWs = connectionStatus === 'CONNECTING';
+  const isOffline = connectionStatus === 'OFFLINE';
+
   return (
     <div className="space-y-6">
       {/* Local Agent Status Bar */}
@@ -148,10 +153,18 @@ export const LiveNetworkingPanel: React.FC = () => {
               className={`p-2.5 rounded-lg border ${
                 isWsConnected
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : isConnectingWs
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                   : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
               }`}
             >
-              {isWsConnected ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+              {isWsConnected ? (
+                <Wifi className="w-5 h-5" />
+              ) : isConnectingWs ? (
+                <RefreshCw className="w-5 h-5 animate-spin" />
+              ) : (
+                <WifiOff className="w-5 h-5" />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -160,10 +173,16 @@ export const LiveNetworkingPanel: React.FC = () => {
                   className={`px-2 py-0.5 text-[11px] rounded-full border font-mono ${
                     isWsConnected
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : isConnectingWs
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                       : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                   }`}
                 >
-                  {isWsConnected ? 'Agent Online' : 'Agent Offline'}
+                  {isWsConnected
+                    ? 'Agent Online'
+                    : isConnectingWs
+                    ? 'Connecting to Agent...'
+                    : 'Agent Offline'}
                 </span>
                 {agentState?.role && agentState.role !== 'UNASSIGNED' && (
                   <span className="px-2 py-0.5 text-[11px] rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono font-medium">
@@ -189,14 +208,15 @@ export const LiveNetworkingPanel: React.FC = () => {
                   value={wsUrl}
                   onChange={(e) => setWsUrl(e.target.value)}
                   placeholder="ws://127.0.0.1:8080"
-                  className="bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs rounded-lg text-slate-200 w-44 font-mono focus:outline-none focus:border-indigo-500"
+                  className="bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs rounded-lg text-slate-200 w-48 font-mono focus:outline-none focus:border-indigo-500"
                 />
                 <button
-                  onClick={() => connectWs(wsUrl)}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow transition-all flex items-center gap-1.5"
+                  onClick={() => retryConnect(wsUrl)}
+                  disabled={isConnectingWs}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow transition-all flex items-center gap-1.5"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Connect
+                  <RefreshCw className={`w-3.5 h-3.5 ${isConnectingWs ? 'animate-spin' : ''}`} />
+                  {isConnectingWs ? 'Connecting...' : 'Connect'}
                 </button>
               </div>
             )}
@@ -206,18 +226,88 @@ export const LiveNetworkingPanel: React.FC = () => {
               className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors"
             >
               <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
-              Setup &amp; Vercel Guide
+              Setup Guide
             </button>
           </div>
         </div>
 
-        {/* Expandable Setup & Vercel HTTPS Help Banner */}
+        {/* Offline Friendly Message & Quick-Start Guidance */}
+        {isOffline && (
+          <div className="mt-4 p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <WifiOff className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-white text-sm">
+                    Local Networking Agent is Offline or Unreachable
+                  </h4>
+                  <p className="text-slate-300 text-xs mt-1 leading-relaxed">
+                    The web visualizer requires the local networking agent running on your laptop to send real UDP datagrams over your network.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => retryConnect(wsUrl)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs shrink-0 flex items-center gap-1.5 shadow transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Retry Connection
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-rose-500/20 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-slate-300">
+              <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                <span className="font-semibold text-white block mb-0.5">Quick Start (Windows)</span>
+                Double-click <code className="text-indigo-300 font-mono">start-agent.bat</code> in the repository root. The agent listens on <strong>UDP 9000</strong>, <strong>WS 8080</strong>, and <strong>WSS 8443</strong> simultaneously.
+              </div>
+              <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                <span className="font-semibold text-white block mb-0.5">Target Address Presets</span>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={() => { setWsUrl('wss://127.0.0.1:8443'); retryConnect('wss://127.0.0.1:8443'); }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded border border-slate-700 font-mono text-[10px]"
+                  >
+                    wss://127.0.0.1:8443 (HTTPS)
+                  </button>
+                  <button
+                    onClick={() => { setWsUrl('ws://127.0.0.1:8080'); retryConnect('ws://127.0.0.1:8080'); }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 font-mono text-[10px]"
+                  >
+                    ws://127.0.0.1:8080 (Local HTTP)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {wsUrl.startsWith('wss://') && (
+              <div className="p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-indigo-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>
+                    <strong>HTTPS Browser Security Note:</strong> If your browser blocks self-signed localhost WSS, authorize the certificate once or run <code className="text-white font-mono bg-indigo-900/60 px-1 py-0.5 rounded">scripts/windows/trust-cert.bat</code>.
+                  </span>
+                </div>
+                <a
+                  href="https://127.0.0.1:8443"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded text-[11px] font-semibold whitespace-nowrap inline-flex items-center gap-1 shrink-0 self-start sm:self-auto"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Authorize https://127.0.0.1:8443
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Expandable Setup & Architecture Guide Banner */}
         {showSetupHelp && (
           <div className="mt-4 pt-4 border-t border-slate-800/80 text-xs text-slate-300 space-y-3 bg-slate-950/40 p-4 rounded-lg">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-white flex items-center gap-1.5">
                 <ExternalLink className="w-4 h-4 text-indigo-400" />
-                Windows Background Service &amp; Vercel Deployment Instructions
+                Local Networking Agent Architecture &amp; Setup Guide
               </span>
               <button
                 onClick={() => setShowSetupHelp(false)}
@@ -228,16 +318,18 @@ export const LiveNetworkingPanel: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] leading-relaxed">
               <div className="p-3 rounded bg-slate-900/80 border border-slate-800">
-                <div className="font-semibold text-indigo-300 mb-1">1. Run Agent Independently</div>
+                <div className="font-semibold text-indigo-300 mb-1">1. Run Agent on Windows</div>
                 <p className="text-slate-400">
-                  Double-click <code className="text-slate-200">start-agent.bat</code> in the repository root, or run{' '}
+                  Double-click <code className="text-slate-200">start-agent.bat</code> in the project root, or run{' '}
                   <code className="text-slate-200">npm run agent:service:install</code> to start silently on Windows login without opening VS Code or a command window.
                 </p>
               </div>
               <div className="p-3 rounded bg-slate-900/80 border border-slate-800">
-                <div className="font-semibold text-emerald-300 mb-1">2. Vercel HTTPS Mixed Content</div>
+                <div className="font-semibold text-emerald-300 mb-1">2. Zero-Config Local Dev</div>
                 <p className="text-slate-400">
-                  When accessing from <code className="text-slate-200">https://...vercel.app</code>, browsers protect loopback access. If your browser blocks the connection, click the tune/lock icon in the address bar &rarr; Site settings &rarr; <strong>Insecure content</strong> &rarr; <strong>Allow</strong>.
+                  Run <code className="text-slate-200">npm run dev:frontend</code> and open{' '}
+                  <code className="text-slate-200">http://localhost:5173</code> in your browser. It connects directly to{' '}
+                  <code className="text-slate-200">ws://127.0.0.1:8080</code> with zero certificate configuration needed.
                 </p>
               </div>
               <div className="p-3 rounded bg-slate-900/80 border border-slate-800">
@@ -251,7 +343,7 @@ export const LiveNetworkingPanel: React.FC = () => {
           </div>
         )}
 
-        {lastError && (
+        {lastError && !isOffline && (
           <div className="mt-3 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{lastError}</span>

@@ -30,9 +30,59 @@ export interface ChatMessage {
   seqNum?: number;
 }
 
-export function useLiveAgent(defaultWsUrl = 'ws://127.0.0.1:8080') {
-  const [wsUrl, setWsUrl] = useState(defaultWsUrl);
-  const [isWsConnected, setIsWsConnected] = useState(false);
+export type WsConnectionStatus = 'CONNECTING' | 'CONNECTED' | 'OFFLINE';
+
+export const STORAGE_KEY_WS_URL = 'nfcv_agent_ws_url';
+
+export function resolveDefaultWsUrl(explicitDefault?: string): string {
+  // 1. Environment variable if set at build or run time
+  const envUrl = (typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_AGENT_WS_URL) as string | undefined;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim();
+  }
+
+  // 2. Persisted user configuration in localStorage
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const persisted = window.localStorage.getItem(STORAGE_KEY_WS_URL);
+      if (persisted && persisted.trim()) {
+        return persisted.trim();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Explicit default parameter (if supplied and not standard fallback)
+  if (explicitDefault && explicitDefault !== 'ws://127.0.0.1:8080') {
+    return explicitDefault;
+  }
+
+  // 4. Protocol-aware context default
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return 'wss://127.0.0.1:8443';
+  }
+
+  return 'ws://127.0.0.1:8080';
+}
+
+export function useLiveAgent(defaultWsUrl?: string) {
+  const [wsUrl, setWsUrlState] = useState<string>(() => resolveDefaultWsUrl(defaultWsUrl));
+
+  const setWsUrl = useCallback((newUrl: string) => {
+    const trimmed = newUrl.trim();
+    setWsUrlState(trimmed);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY_WS_URL, trimmed);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+  const [connectionStatus, setConnectionStatus] = useState<WsConnectionStatus>('CONNECTING');
   const [agentState, setAgentState] = useState<LiveAgentStateDto | null>(null);
   const [events, setEvents] = useState<LiveTelemetryEvent[]>([]);
   const [messages, setMessages] = useState<Array<{ text: string; timestamp: number }>>([]);
@@ -44,49 +94,114 @@ export function useLiveAgent(defaultWsUrl = 'ws://127.0.0.1:8080') {
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentSessionIdRef = useRef<string | undefined>(undefined);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const isIntentionalCloseRef = useRef<boolean>(false);
+  const MAX_AUTO_RECONNECT_ATTEMPTS = 3;
+
+  const isWsConnected = connectionStatus === 'CONNECTED';
 
   const sendCommand = useCallback((cmd: WsClientCommand) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       setLastError('Not connected to local Networking Agent.');
       return;
     }
-    wsRef.current.send(JSON.stringify(cmd));
+    try {
+      wsRef.current.send(JSON.stringify(cmd));
+    } catch (err) {
+      setLastError(`Failed to dispatch command: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, []);
 
   const refreshReceivedFiles = useCallback(() => {
     sendCommand({ command: 'LIST_RECEIVED_FILES' });
   }, [sendCommand]);
 
-  const connectWs = useCallback((url = wsUrl) => {
+  const connectWs = useCallback((targetUrl: string, force: boolean = false) => {
+    // Clear any pending reconnect timers
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    // Guard against duplicate connection attempts
+    if (
+      !force &&
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)
+    ) {
+      return;
+    }
+
+    // Cleanly close prior connection if switching URLs or forcing reconnect
     if (wsRef.current) {
+      isIntentionalCloseRef.current = true;
       try {
         wsRef.current.close();
       } catch {
         // ignore
       }
+      wsRef.current = null;
     }
 
+    isIntentionalCloseRef.current = false;
+    setConnectionStatus('CONNECTING');
+    setLastError(null);
+
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(targetUrl);
+      wsRef.current = ws;
 
       ws.onopen = () => {
-        setIsWsConnected(true);
-        setLastError(null);
-        // Request initial status and received files
-        ws.send(JSON.stringify({ command: 'GET_STATUS' }));
-        ws.send(JSON.stringify({ command: 'LIST_RECEIVED_FILES' }));
-      };
+        // Verify this is still the active socket instance
+        if (wsRef.current !== ws) return;
 
-      ws.onclose = () => {
-        setIsWsConnected(false);
+        setConnectionStatus('CONNECTED');
+        reconnectAttemptsRef.current = 0;
+        setLastError(null);
+
+        // Fetch initial agent status and completed files
+        try {
+          ws.send(JSON.stringify({ command: 'GET_STATUS' }));
+          ws.send(JSON.stringify({ command: 'LIST_RECEIVED_FILES' }));
+        } catch {
+          // ignore
+        }
       };
 
       ws.onerror = () => {
-        setIsWsConnected(false);
-        setLastError(`Cannot connect to agent at ${url}. Is the background agent running?`);
+        if (wsRef.current !== ws) return;
+        setConnectionStatus('OFFLINE');
+        setLastError(
+          `Local Networking Agent is offline or unreachable at ${targetUrl}. Start the agent using start-agent.bat on your laptop and click Retry.`
+        );
+      };
+
+      ws.onclose = () => {
+        if (wsRef.current !== ws) return;
+
+        setConnectionStatus('OFFLINE');
+        wsRef.current = null;
+
+        // Trigger safe auto-reconnect with exponential backoff if not closed manually
+        if (!isIntentionalCloseRef.current) {
+          if (reconnectAttemptsRef.current < MAX_AUTO_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current += 1;
+            const delay = 1500 * reconnectAttemptsRef.current;
+            reconnectTimerRef.current = setTimeout(() => {
+              connectWs(targetUrl, false);
+            }, delay);
+          } else {
+            setLastError(
+              `Local Networking Agent is offline at ${targetUrl}. Ensure start-agent.bat is running on your machine, then click Retry.`
+            );
+          }
+        }
       };
 
       ws.onmessage = (event) => {
+        if (wsRef.current !== ws) return;
+
         try {
           const msg = JSON.parse(event.data) as WsServerMessage;
 
@@ -98,19 +213,15 @@ export function useLiveAgent(defaultWsUrl = 'ws://127.0.0.1:8080') {
                 setLastError(state.lastError);
               }
 
-              // Handle session change or disconnection cleanly
               if (state.sessionId !== currentSessionIdRef.current) {
                 currentSessionIdRef.current = state.sessionId;
-                if (!state.sessionId) {
-                  // Session ended
-                }
               }
               break;
             }
 
             case 'LIVE_PROTOCOL_EVENT': {
               const evt = msg.payload.event as LiveTelemetryEvent;
-              setEvents((prev) => [...prev.slice(-199), evt]); // Keep last 200 events
+              setEvents((prev) => [...prev.slice(-199), evt]);
               break;
             }
 
@@ -277,21 +388,45 @@ export function useLiveAgent(defaultWsUrl = 'ws://127.0.0.1:8080') {
           // ignore parse errors
         }
       };
-
-      wsRef.current = ws;
     } catch (err) {
+      setConnectionStatus('OFFLINE');
       setLastError(err instanceof Error ? err.message : String(err));
     }
-  }, [wsUrl, sendCommand]);
+  }, [sendCommand]);
 
+  // Initial connection on mount & url changes
   useEffect(() => {
-    connectWs();
+    connectWs(wsUrl, false);
+
     return () => {
+      isIntentionalCloseRef.current = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       if (wsRef.current) {
-        wsRef.current.close();
+        try {
+          wsRef.current.close();
+        } catch {
+          // ignore
+        }
+        wsRef.current = null;
       }
     };
-  }, [connectWs]);
+  }, [wsUrl, connectWs]);
+
+  // Explicit user-triggered retry
+  const retryConnect = useCallback(
+    (customUrl?: string) => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      reconnectAttemptsRef.current = 0;
+      connectWs(customUrl ?? wsUrl, true);
+    },
+    [connectWs, wsUrl]
+  );
 
   const startListener = useCallback(
     (udpPort: number, udpHost = '0.0.0.0') => {
@@ -394,8 +529,10 @@ export function useLiveAgent(defaultWsUrl = 'ws://127.0.0.1:8080') {
   return {
     wsUrl,
     setWsUrl,
+    connectionStatus,
     isWsConnected,
     connectWs,
+    retryConnect,
     agentState,
     events,
     messages,

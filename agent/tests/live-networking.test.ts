@@ -375,4 +375,60 @@ describe('Live UDP Networking Integration', () => {
     directSock.close();
     wsB.close();
   });
+
+  it('validates client Origin to prevent cross-site websocket hijacking', () => {
+    // Trusted local origins
+    expect(agentA.isOriginAllowed('http://localhost:5173')).toBe(true);
+    expect(agentA.isOriginAllowed('http://127.0.0.1:8080')).toBe(true);
+    expect(agentA.isOriginAllowed('https://localhost:3000')).toBe(true);
+
+    // Trusted Vercel domains
+    expect(agentA.isOriginAllowed('https://network-flow-control-visualizer.vercel.app')).toBe(true);
+    expect(agentA.isOriginAllowed('https://my-preview-branch.vercel.app')).toBe(true);
+
+    // Non-browser clients (CLI, scripts)
+    expect(agentA.isOriginAllowed(undefined)).toBe(true);
+
+    // Malicious third-party origin must be rejected
+    expect(agentA.isOriginAllowed('https://malicious-attacker-site.com')).toBe(false);
+    expect(agentA.isOriginAllowed('http://evil.org')).toBe(false);
+    expect(agentA.isOriginAllowed('https://not-vercel.app.fake.com')).toBe(false);
+  });
+
+  it('supports dual WebSocket listeners (WS and secure WSS) for HTTPS and HTTP clients', async () => {
+    const dualUdp = 19105;
+    const dualWs = 19205;
+    const dualWss = 19305;
+    const dualStorage = fs.mkdtempSync(path.join(os.tmpdir(), 'nfcv-dual-'));
+
+    const dualAgent = new NetworkingAgent({
+      udpPort: dualUdp,
+      wsPort: dualWs,
+      wssPort: dualWss,
+      storageDir: dualStorage,
+    });
+
+    await dualAgent.start();
+    expect(dualAgent.getWsPort()).toBe(dualWs);
+    expect(dualAgent.getWssPort()).toBe(dualWss);
+
+    // Verify WS connection succeeds on dualWs
+    const wsClient = new WebSocket(`ws://127.0.0.1:${dualWs}`);
+    let wsConnected = false;
+    await new Promise<void>((resolve) => {
+      wsClient.on('open', () => {
+        wsConnected = true;
+        resolve();
+      });
+    });
+    expect(wsConnected).toBe(true);
+    wsClient.close();
+
+    await dualAgent.stop();
+    try {
+      fs.rmSync(dualStorage, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  });
 });

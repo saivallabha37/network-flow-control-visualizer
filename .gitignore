@@ -25,6 +25,8 @@ coverage/
 .env.production.local
 *.pem
 *.key
+*.pfx
+agent/certs/
 
 # Logs
 logs/
