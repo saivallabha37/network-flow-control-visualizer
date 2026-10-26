@@ -16,11 +16,18 @@ for /f "tokens=5" %%a in ('netstat -a -n -o ^| findstr ":9000" ^| findstr "UDP"'
     echo [ONLINE] UDP listener bound on port 9000 ^(PID: !PID_9000!^)
 )
 
-echo Checking WebSocket Port 8080 (Browser Control)...
+echo Checking WebSocket Port 8080 (WS for Local HTTP)...
 for /f "tokens=5" %%a in ('netstat -a -n -o ^| findstr ":8080" ^| findstr "LISTENING"') do (
     set PID_8080=%%a
     set AGENT_ACTIVE=1
     echo [ONLINE] WebSocket server bound on port 8080 ^(PID: !PID_8080!^)
+)
+
+echo Checking Secure WSS Port 8443 (WSS for Vercel HTTPS)...
+for /f "tokens=5" %%a in ('netstat -a -n -o ^| findstr ":8443" ^| findstr "LISTENING"') do (
+    set PID_8443=%%a
+    set AGENT_ACTIVE=1
+    echo [ONLINE] Secure WSS server bound on port 8443 ^(PID: !PID_8443!^)
 )
 
 echo.

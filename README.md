@@ -204,23 +204,26 @@ Ensure incoming UDP on port `9000` is permitted through the local firewall:
 - When prompted by Windows Defender or macOS security dialog on first run, select **Allow Access for Private Networks**.
 
 #### Step 4: Start the Networking Agent on Both Laptops
+The agent automatically establishes a **dual listener** for both standard WebSockets (`ws://127.0.0.1:8080`) and secure TLS WebSockets (`wss://127.0.0.1:8443`), alongside the real UDP listener on `0.0.0.0:9000`.
+
 You can launch the agent using any of these methods (no VS Code required!):
 - **Option A (1-Click Batch):** Double-click `start-agent.bat` in the project root.
 - **Option B (Silent Background):** Double-click `scripts/windows/start-agent-background.vbs`.
 - **Option C (CLI):**
   - **On Laptop A:**
     ```bash
-    npm run agent:live -- --udp 9000 --ws 8080
+    npm run agent:live -- --udp 9000 --ws 8080 --wss 8443
     ```
   - **On Laptop B:**
     ```bash
-    npm run agent:live -- --udp 9000 --ws 8080
+    npm run agent:live -- --udp 9000 --ws 8080 --wss 8443
     ```
-*(Note: If running on a single laptop for testing, use distinct UDP and WS ports: e.g. Laptop A on `--udp 9000 --ws 8080` and Laptop B on `--udp 9001 --ws 8081`.)*
+*(Note: If running on a single laptop for testing, use distinct UDP and WS ports: e.g. Laptop A on `--udp 9000 --ws 8080 --wss 8443` and Laptop B on `--udp 9001 --ws 8081 --wss 8444`.)*
 
 #### Step 5: Launch the Frontend Visualizer
 - **Local Dev:** Run `npm run dev:frontend` and open `http://localhost:5173` (connects seamlessly to `ws://127.0.0.1:8080`).
-- **Vercel Deployment:** Open your deployed URL (`https://<project>.vercel.app`). The Live UDP Network tab loads by default and automatically attempts connection to your local agent. See [docs/windows-and-vercel-guide.md](docs/windows-and-vercel-guide.md) for full architecture and setup details.
+- **Vercel Deployment:** Open your deployed URL (`https://<project>.vercel.app`). The Live UDP Network tab loads by default and connects securely to `wss://127.0.0.1:8443`.
+  - *First-time Windows setup for HTTPS:* Run `scripts/windows/trust-cert.bat` (or open `https://127.0.0.1:8443` once in your browser and proceed past the self-signed certificate warning). See [docs/windows-and-vercel-guide.md](docs/windows-and-vercel-guide.md) for full details.
 
 #### Step 6: Connect and Exchange Protocol Data
 1. In the header bar, click **Live UDP Network**.

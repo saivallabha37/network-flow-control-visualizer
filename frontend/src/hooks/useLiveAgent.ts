@@ -32,17 +32,56 @@ export interface ChatMessage {
 
 export type WsConnectionStatus = 'CONNECTING' | 'CONNECTED' | 'OFFLINE';
 
-export function useLiveAgent(defaultWsUrl = 'ws://127.0.0.1:8080') {
-  // Determine appropriate default URL based on browser security context
-  const getInitialWsUrl = (): string => {
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-      // Vercel HTTPS requires secure WebSocket WSS
-      return 'wss://127.0.0.1:8443';
-    }
-    return defaultWsUrl;
-  };
+export const STORAGE_KEY_WS_URL = 'nfcv_agent_ws_url';
 
-  const [wsUrl, setWsUrl] = useState<string>(getInitialWsUrl);
+export function resolveDefaultWsUrl(explicitDefault?: string): string {
+  // 1. Environment variable if set at build or run time
+  const envUrl = (typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_AGENT_WS_URL) as string | undefined;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim();
+  }
+
+  // 2. Persisted user configuration in localStorage
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const persisted = window.localStorage.getItem(STORAGE_KEY_WS_URL);
+      if (persisted && persisted.trim()) {
+        return persisted.trim();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Explicit default parameter (if supplied and not standard fallback)
+  if (explicitDefault && explicitDefault !== 'ws://127.0.0.1:8080') {
+    return explicitDefault;
+  }
+
+  // 4. Protocol-aware context default
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return 'wss://127.0.0.1:8443';
+  }
+
+  return 'ws://127.0.0.1:8080';
+}
+
+export function useLiveAgent(defaultWsUrl?: string) {
+  const [wsUrl, setWsUrlState] = useState<string>(() => resolveDefaultWsUrl(defaultWsUrl));
+
+  const setWsUrl = useCallback((newUrl: string) => {
+    const trimmed = newUrl.trim();
+    setWsUrlState(trimmed);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY_WS_URL, trimmed);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
   const [connectionStatus, setConnectionStatus] = useState<WsConnectionStatus>('CONNECTING');
   const [agentState, setAgentState] = useState<LiveAgentStateDto | null>(null);
   const [events, setEvents] = useState<LiveTelemetryEvent[]>([]);

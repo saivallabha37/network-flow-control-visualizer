@@ -394,4 +394,41 @@ describe('Live UDP Networking Integration', () => {
     expect(agentA.isOriginAllowed('http://evil.org')).toBe(false);
     expect(agentA.isOriginAllowed('https://not-vercel.app.fake.com')).toBe(false);
   });
+
+  it('supports dual WebSocket listeners (WS and secure WSS) for HTTPS and HTTP clients', async () => {
+    const dualUdp = 19105;
+    const dualWs = 19205;
+    const dualWss = 19305;
+    const dualStorage = fs.mkdtempSync(path.join(os.tmpdir(), 'nfcv-dual-'));
+
+    const dualAgent = new NetworkingAgent({
+      udpPort: dualUdp,
+      wsPort: dualWs,
+      wssPort: dualWss,
+      storageDir: dualStorage,
+    });
+
+    await dualAgent.start();
+    expect(dualAgent.getWsPort()).toBe(dualWs);
+    expect(dualAgent.getWssPort()).toBe(dualWss);
+
+    // Verify WS connection succeeds on dualWs
+    const wsClient = new WebSocket(`ws://127.0.0.1:${dualWs}`);
+    let wsConnected = false;
+    await new Promise<void>((resolve) => {
+      wsClient.on('open', () => {
+        wsConnected = true;
+        resolve();
+      });
+    });
+    expect(wsConnected).toBe(true);
+    wsClient.close();
+
+    await dualAgent.stop();
+    try {
+      fs.rmSync(dualStorage, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  });
 });

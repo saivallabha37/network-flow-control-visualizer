@@ -69,11 +69,9 @@ async function main() {
   console.log('  Network Flow Control Protocols Visualizer — Live Agent');
   console.log('='.repeat(60));
   console.log(`Local UDP bind:       ${udpHost}:${udpPort}`);
-  console.log(`Browser WebSocket:    ws://${wsHost}:${wsPort}`);
-  if (sslCertPath && sslKeyPath) {
-    console.log(`Secure WSS Endpoint:  wss://${wsHost}:${wssPort ?? 8443}`);
-  }
-  console.log('Security safeguard:   WS server binds strictly to loopback 127.0.0.1');
+  console.log(`Browser WebSocket:    ws://${wsHost}:${wsPort} (Local HTTP / Dev)`);
+  console.log(`Secure WSS Endpoint:  wss://${wsHost}:${wssPort ?? 8443} (Vercel HTTPS)`);
+  console.log('Security safeguard:   WS/WSS bind strictly to loopback 127.0.0.1');
   console.log('Origin protection:    Validates client origin (localhost, 127.0.0.1, *.vercel.app)');
   console.log('File staging:         received_files/');
   console.log('='.repeat(60));
@@ -90,6 +88,12 @@ async function main() {
 
   try {
     await agent.start();
+    const activeWss = agent.getWssPort();
+    if (activeWss) {
+      console.log(`[SECURE WSS] Active on wss://${wsHost}:${activeWss} for HTTPS frontend`);
+    } else {
+      console.log(`[INFO] Running plain WebSocket on ws://${wsHost}:${wsPort}`);
+    }
     console.log('Agent is ready. Connect your browser visualizer to proceed.');
   } catch (err) {
     console.error('Failed to start Networking Agent:', err);

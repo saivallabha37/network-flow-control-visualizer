@@ -1,7 +1,74 @@
-import { describe, it, expect } from 'vitest';
-import { ChatMessage, MessageDeliveryStatus } from '../src/hooks/useLiveAgent';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  ChatMessage,
+  MessageDeliveryStatus,
+  resolveDefaultWsUrl,
+  STORAGE_KEY_WS_URL,
+} from '../src/hooks/useLiveAgent';
 
 describe('Frontend Live Networking Mode Integration', () => {
+  beforeEach(() => {
+    const store: Record<string, string> = {};
+    (globalThis as any).window = {
+      location: {
+        protocol: 'http:',
+        hostname: 'localhost',
+      },
+      localStorage: {
+        getItem: (key: string) => store[key] ?? null,
+        setItem: (key: string, val: string) => {
+          store[key] = String(val);
+        },
+        clear: () => {
+          for (const k of Object.keys(store)) {
+            delete store[k];
+          }
+        },
+      },
+    };
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).window;
+  });
+
+  describe('WebSocket URL Resolution and Mismatch Prevention', () => {
+    it('defaults to wss://127.0.0.1:8443 when page is served over HTTPS', () => {
+      (globalThis as any).window.location.protocol = 'https:';
+      (globalThis as any).window.location.hostname = 'network-flow-control-visualizer.vercel.app';
+
+      const url = resolveDefaultWsUrl();
+      expect(url).toBe('wss://127.0.0.1:8443');
+      expect(url.startsWith('wss://')).toBe(true);
+    });
+
+    it('defaults to ws://127.0.0.1:8080 when page is served over HTTP', () => {
+      (globalThis as any).window.location.protocol = 'http:';
+      (globalThis as any).window.location.hostname = 'localhost';
+
+      const url = resolveDefaultWsUrl();
+      expect(url).toBe('ws://127.0.0.1:8080');
+      expect(url.startsWith('ws://')).toBe(true);
+    });
+
+    it('prioritizes persisted user URL from localStorage over protocol default', () => {
+      (globalThis as any).window.location.protocol = 'https:';
+      (globalThis as any).window.localStorage.setItem(STORAGE_KEY_WS_URL, 'wss://custom.domain.local:9443');
+
+      const url = resolveDefaultWsUrl();
+      expect(url).toBe('wss://custom.domain.local:9443');
+    });
+
+    it('prevents insecure mixed content regression on HTTPS deployments', () => {
+      (globalThis as any).window.location.protocol = 'https:';
+
+      const url = resolveDefaultWsUrl();
+      // HTTPS page must never auto-select insecure ws:// on 8080, which modern browsers block
+      expect(url).not.toBe('ws://127.0.0.1:8080');
+      expect(url).toBe('wss://127.0.0.1:8443');
+    });
+  });
+
   it('validates live agent initial state and role definitions', () => {
     const roles = ['HOST_A', 'HOST_B', 'UNASSIGNED'];
     expect(roles).toContain('HOST_A');

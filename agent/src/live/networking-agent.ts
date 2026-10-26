@@ -2,6 +2,7 @@ import * as dgram from 'dgram';
 import * as http from 'http';
 import * as https from 'https';
 import * as fs from 'fs';
+import * as path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
   LiveAgentStateDto,
@@ -28,6 +29,9 @@ export interface NetworkingAgentConfig {
   wsPort?: number;
   wsHost?: string;
   wssPort?: number;
+  pfx?: Buffer;
+  pfxPath?: string;
+  pfxPassphrase?: string;
   sslCert?: string | Buffer;
   sslKey?: string | Buffer;
   sslCertPath?: string;
@@ -42,6 +46,7 @@ export class NetworkingAgent {
 
   private udpSocket?: dgram.Socket;
   private wsServer?: WebSocketServer;
+  private wssServer?: WebSocketServer;
   private httpsServer?: https.Server;
   private connectedWsClients = new Set<WebSocket>();
 
@@ -50,6 +55,8 @@ export class NetworkingAgent {
   private wsPort: number;
   private wsHost: string;
   private wssPort?: number;
+  private pfx?: Buffer;
+  private pfxPassphrase?: string;
   private sslCert?: string | Buffer;
   private sslKey?: string | Buffer;
   private allowedOrigins?: string[];
@@ -76,15 +83,55 @@ export class NetworkingAgent {
     this.localUdpHost = config?.udpHost ?? '0.0.0.0';
     this.wsPort = config?.wsPort ?? 8080;
     this.wsHost = config?.wsHost ?? '127.0.0.1'; // Binds strictly to loopback by default for security
-    this.wssPort = config?.wssPort;
+    // Default wssPort to 8443 only when default wsPort (8080) is used and wssPort not explicitly specified.
+    // If a custom wsPort was provided without wssPort (like in isolated tests), leave wssPort undefined.
+    this.wssPort = config?.wssPort !== undefined ? config.wssPort : (config?.wsPort !== undefined ? undefined : 8443);
+    this.pfx = config?.pfx;
+    this.pfxPassphrase = config?.pfxPassphrase ?? 'nfcv_localhost';
     this.sslCert = config?.sslCert;
     this.sslKey = config?.sslKey;
 
+    // Check explicit paths first
+    if (!this.pfx && config?.pfxPath && fs.existsSync(config.pfxPath)) {
+      this.pfx = fs.readFileSync(config.pfxPath);
+    }
     if (!this.sslCert && config?.sslCertPath && fs.existsSync(config.sslCertPath)) {
       this.sslCert = fs.readFileSync(config.sslCertPath);
     }
     if (!this.sslKey && config?.sslKeyPath && fs.existsSync(config.sslKeyPath)) {
       this.sslKey = fs.readFileSync(config.sslKeyPath);
+    }
+
+    // Auto-discover bundled repository certificates if not explicitly provided
+    if (!this.pfx && (!this.sslCert || !this.sslKey)) {
+      const candidates = [
+        path.resolve(process.cwd(), 'agent', 'certs', 'cert.pfx'),
+        path.resolve(process.cwd(), 'certs', 'cert.pfx'),
+      ];
+      for (const cand of candidates) {
+        if (fs.existsSync(cand)) {
+          this.pfx = fs.readFileSync(cand);
+          break;
+        }
+      }
+
+      if (!this.pfx) {
+        const pemCertCandidates = [
+          path.resolve(process.cwd(), 'agent', 'certs', 'cert.pem'),
+          path.resolve(process.cwd(), 'certs', 'cert.pem'),
+        ];
+        const pemKeyCandidates = [
+          path.resolve(process.cwd(), 'agent', 'certs', 'key.pem'),
+          path.resolve(process.cwd(), 'certs', 'key.pem'),
+        ];
+        for (let i = 0; i < pemCertCandidates.length; i++) {
+          if (fs.existsSync(pemCertCandidates[i]) && fs.existsSync(pemKeyCandidates[i])) {
+            this.sslCert = fs.readFileSync(pemCertCandidates[i]);
+            this.sslKey = fs.readFileSync(pemKeyCandidates[i]);
+            break;
+          }
+        }
+      }
     }
 
     this.allowedOrigins = config?.allowedOrigins;
@@ -178,10 +225,32 @@ export class NetworkingAgent {
       this.wsServer = undefined;
     }
 
+    if (this.wssServer) {
+      await new Promise<void>((resolve) => {
+        try {
+          const timer = setTimeout(resolve, 500);
+          this.wssServer?.close(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        } catch {
+          resolve();
+        }
+      });
+      this.wssServer = undefined;
+    }
+
     if (this.httpsServer) {
       await new Promise<void>((resolve) => {
         try {
-          this.httpsServer?.close(() => resolve());
+          if (typeof (this.httpsServer as any).closeAllConnections === 'function') {
+            (this.httpsServer as any).closeAllConnections();
+          }
+          const timer = setTimeout(resolve, 500);
+          this.httpsServer?.close(() => {
+            clearTimeout(timer);
+            resolve();
+          });
         } catch {
           resolve();
         }
@@ -195,71 +264,93 @@ export class NetworkingAgent {
 
   // ================= WebSocket Server Handling =================
 
+  public getTlsServerOptions(): https.ServerOptions | null {
+    if (this.pfx) {
+      return { pfx: this.pfx, passphrase: this.pfxPassphrase ?? 'nfcv_localhost' };
+    }
+    if (this.sslCert && this.sslKey) {
+      return { cert: this.sslCert, key: this.sslKey };
+    }
+    return null;
+  }
+
+  public getWsPort(): number {
+    return this.wsPort;
+  }
+
+  public getWssPort(): number | undefined {
+    return this.wssServer ? (this.wssPort ?? 8443) : undefined;
+  }
+
   public async startWsServer(): Promise<void> {
     if (this.wsServer) return;
 
-    return new Promise((resolve, reject) => {
+    const verifyClient = (
+      info: { origin: string; secure: boolean; req: http.IncomingMessage },
+      callback: (res: boolean, code?: number, message?: string) => void
+    ) => {
+      const origin = info.origin || (info.req.headers.origin as string | undefined);
+      if (!this.isOriginAllowed(origin)) {
+        console.warn(`[SECURITY] Rejected WebSocket connection from unauthorized origin: ${origin}`);
+        callback(false, 403, 'Forbidden: Origin unauthorized');
+        return;
+      }
+      callback(true);
+    };
+
+    // 1. Always start standard WebSocket server on loopback wsPort (default: 8080)
+    await new Promise<void>((resolve, reject) => {
       try {
-        const verifyClient = (
-          info: { origin: string; secure: boolean; req: http.IncomingMessage },
-          callback: (res: boolean, code?: number, message?: string) => void
-        ) => {
-          const origin = info.origin || (info.req.headers.origin as string | undefined);
-          if (!this.isOriginAllowed(origin)) {
-            console.warn(`[SECURITY] Rejected WebSocket connection from unauthorized origin: ${origin}`);
-            callback(false, 403, 'Forbidden: Origin unauthorized');
-            return;
-          }
-          callback(true);
-        };
+        const server = new WebSocketServer({
+          port: this.wsPort,
+          host: this.wsHost,
+          verifyClient,
+        });
 
-        if (this.sslCert && this.sslKey) {
-          // Launch Secure HTTPS/WSS Server on loopback
-          const port = this.wssPort ?? 8443;
-          const httpsServer = https.createServer({
-            cert: this.sslCert,
-            key: this.sslKey,
-          });
+        server.on('listening', () => {
+          this.wsServer = server;
+          this.attachWsServerListeners(server);
+          resolve();
+        });
 
-          const server = new WebSocketServer({
+        server.on('error', (err) => {
+          this.lastError = `WS Server Error on port ${this.wsPort}: ${err.message}`;
+          reject(err);
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    // 2. Concurrently start secure WSS server on loopback wssPort if TLS credentials available and wssPort configured
+    const tlsOpts = this.getTlsServerOptions();
+    if (tlsOpts && this.wssPort !== undefined && this.wssPort > 0) {
+      const securePort = this.wssPort;
+      await new Promise<void>((resolve) => {
+        try {
+          const httpsServer = https.createServer(tlsOpts);
+          const wssServer = new WebSocketServer({
             server: httpsServer,
             verifyClient,
           });
 
           httpsServer.on('error', (err) => {
-            this.lastError = `WSS HTTPS Server Error: ${err.message}`;
-            reject(err);
+            console.warn(`[WSS] Secure server on port ${securePort} warning: ${err.message}`);
+            resolve();
           });
 
-          httpsServer.listen(port, this.wsHost, () => {
+          httpsServer.listen(securePort, this.wsHost, () => {
             this.httpsServer = httpsServer;
-            this.wsServer = server;
-            this.attachWsServerListeners(server);
+            this.wssServer = wssServer;
+            this.attachWsServerListeners(wssServer);
             resolve();
           });
-        } else {
-          // Standard WebSocket Server on loopback
-          const server = new WebSocketServer({
-            port: this.wsPort,
-            host: this.wsHost,
-            verifyClient,
-          });
-
-          server.on('listening', () => {
-            this.wsServer = server;
-            this.attachWsServerListeners(server);
-            resolve();
-          });
-
-          server.on('error', (err) => {
-            this.lastError = `WS Server Error: ${err.message}`;
-            reject(err);
-          });
+        } catch (err) {
+          console.warn(`[WSS] Failed to initialize TLS listener on port ${securePort}:`, err);
+          resolve();
         }
-      } catch (err) {
-        reject(err);
-      }
-    });
+      });
+    }
   }
 
   private attachWsServerListeners(server: WebSocketServer): void {

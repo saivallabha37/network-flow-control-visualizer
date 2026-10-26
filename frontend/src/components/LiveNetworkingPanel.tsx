@@ -22,6 +22,7 @@ import {
   HardDrive,
   Trash2,
   ExternalLink,
+  ShieldCheck,
 } from 'lucide-react';
 import { ProtocolType } from '@agent';
 import { useLiveAgent } from '../hooks/useLiveAgent';
@@ -257,13 +258,46 @@ export const LiveNetworkingPanel: React.FC = () => {
             <div className="pt-2 border-t border-rose-500/20 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-slate-300">
               <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800">
                 <span className="font-semibold text-white block mb-0.5">Quick Start (Windows)</span>
-                Double-click <code className="text-indigo-300 font-mono">start-agent.bat</code> in the repository root, or run <code className="text-indigo-300 font-mono">npm run agent:live</code> in your terminal.
+                Double-click <code className="text-indigo-300 font-mono">start-agent.bat</code> in the repository root. The agent listens on <strong>UDP 9000</strong>, <strong>WS 8080</strong>, and <strong>WSS 8443</strong> simultaneously.
               </div>
               <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800">
-                <span className="font-semibold text-white block mb-0.5">Target Address</span>
-                Currently connecting to <code className="text-amber-300 font-mono">{wsUrl}</code>. Ensure the port matches your running agent.
+                <span className="font-semibold text-white block mb-0.5">Target Address Presets</span>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={() => { setWsUrl('wss://127.0.0.1:8443'); retryConnect('wss://127.0.0.1:8443'); }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded border border-slate-700 font-mono text-[10px]"
+                  >
+                    wss://127.0.0.1:8443 (HTTPS)
+                  </button>
+                  <button
+                    onClick={() => { setWsUrl('ws://127.0.0.1:8080'); retryConnect('ws://127.0.0.1:8080'); }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 font-mono text-[10px]"
+                  >
+                    ws://127.0.0.1:8080 (Local HTTP)
+                  </button>
+                </div>
               </div>
             </div>
+
+            {wsUrl.startsWith('wss://') && (
+              <div className="p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-indigo-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>
+                    <strong>HTTPS Browser Security Note:</strong> If your browser blocks self-signed localhost WSS, authorize the certificate once or run <code className="text-white font-mono bg-indigo-900/60 px-1 py-0.5 rounded">scripts/windows/trust-cert.bat</code>.
+                  </span>
+                </div>
+                <a
+                  href="https://127.0.0.1:8443"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded text-[11px] font-semibold whitespace-nowrap inline-flex items-center gap-1 shrink-0 self-start sm:self-auto"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Authorize https://127.0.0.1:8443
+                </a>
+              </div>
+            )}
           </div>
         )}
 
