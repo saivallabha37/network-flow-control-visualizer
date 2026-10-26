@@ -219,9 +219,8 @@ You can launch the agent using any of these methods (no VS Code required!):
 *(Note: If running on a single laptop for testing, use distinct UDP and WS ports: e.g. Laptop A on `--udp 9000 --ws 8080` and Laptop B on `--udp 9001 --ws 8081`.)*
 
 #### Step 5: Launch the Frontend Visualizer
-- **Local Dev:** Run `npm run dev:frontend` and open `http://localhost:5173`.
-- **Vercel Deployment:** Open your deployed URL (`https://<project>.vercel.app`).
-  - *Tip for Vercel HTTPS:* Ensure your browser allows loopback WebSocket connections (`ws://127.0.0.1:8080`) by setting *Insecure content* to *Allow* in Site settings. See [docs/windows-and-vercel-guide.md](docs/windows-and-vercel-guide.md) for full instructions.
+- **Local Dev:** Run `npm run dev:frontend` and open `http://localhost:5173` (connects seamlessly to `ws://127.0.0.1:8080`).
+- **Vercel Deployment:** Open your deployed URL (`https://<project>.vercel.app`). The Live UDP Network tab loads by default and automatically attempts connection to your local agent. See [docs/windows-and-vercel-guide.md](docs/windows-and-vercel-guide.md) for full architecture and setup details.
 
 #### Step 6: Connect and Exchange Protocol Data
 1. In the header bar, click **Live UDP Network**.

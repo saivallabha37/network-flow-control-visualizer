@@ -34,7 +34,7 @@ const DEFAULT_CONFIG: SimulationConfig = {
 };
 
 export default function App() {
-  const [activeMode, setActiveMode] = useState<'simulation' | 'live'>('simulation');
+  const [activeMode, setActiveMode] = useState<'simulation' | 'live'>('live');
   const [selectedInFlightPacket, setSelectedInFlightPacket] = useState<InFlightPacket | null>(null);
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);

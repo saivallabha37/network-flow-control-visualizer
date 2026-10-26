@@ -53,26 +53,33 @@ New-NetFirewallRule -DisplayName "NFCV Live UDP 9000 Outbound" -Direction Outbou
 
 ---
 
-## 3. Connecting Vercel HTTPS Deployment to Local Networking Agent
+## 3. Local Networking Agent & Vercel HTTPS Architecture
 
-When you access the visualizer via its deployed Vercel URL (e.g., `https://network-flow-control-visualizer.vercel.app`), the web page is served over **HTTPS**, while your local networking agent listens on loopback (`ws://127.0.0.1:8080`).
+When you access the visualizer via its deployed Vercel URL (e.g., `https://network-flow-control-visualizer.vercel.app`), the web page is served over **HTTPS**, while your local networking agent runs on loopback `127.0.0.1` on each laptop.
 
-Modern web browsers enforce Mixed Content security restrictions. Here is how to connect seamlessly:
+### Understanding Browser Mixed-Content Architecture
+Modern web browsers enforce strict Mixed Content policies: pages served over secure `https://` cannot establish unencrypted `ws://` WebSocket connections.
 
-### Step 1: Ensure Local Agent is Running
-Start the agent on your laptop using `start-agent.bat` or `npm run agent:live`.
+To provide a secure and clean environment without compromising browser security:
 
-### Step 2: Allow Loopback / Insecure Content in Browser
-When accessing the HTTPS site on Chrome or Edge:
-1. Click the **Site Information / Tune icon** to the left of the URL bar (next to `https://...`).
-2. Select **Site settings**.
-3. Scroll down to **Insecure content**.
-4. Change the dropdown from *Block (default)* to **Allow**.
-5. Return to the visualizer tab and refresh the page (`F5` or `Ctrl+R`).
-6. The top status bar will immediately display **Agent Online**.
+#### Option A: Zero-Configuration Local Development (Recommended for Full Evaluation)
+1. Run the frontend locally on your laptop:
+   ```bash
+   npm run dev:frontend
+   ```
+2. Open `http://localhost:5173`.
+3. Because the site is served over standard `http://`, the browser connects to `ws://127.0.0.1:8080` immediately without certificate requirements or mixed-content restrictions.
+
+#### Option B: Secure Local Agent Endpoint (WSS / TLS)
+1. The Networking Agent supports secure WebSockets (`wss://`) on loopback port `8443`.
+2. Generate or provide a trusted local development certificate (e.g. using `mkcert localhost 127.0.0.1`):
+   ```bash
+   npx tsx agent/src/live/cli.ts --wss 8443 --ssl-cert certs/cert.pem --ssl-key certs/key.pem
+   ```
+3. When connecting from the Vercel HTTPS site, enter `wss://127.0.0.1:8443` in the agent address field and click **Connect**.
 
 > [!NOTE]
-> Loopback WebSocket binding is strictly confined to `127.0.0.1`. The local agent's management interface is never exposed to the wider LAN or internet, ensuring robust host security.
+> Loopback WebSocket binding is strictly confined to `127.0.0.1`. The local agent's management interface is never exposed to the wider LAN or internet, and it automatically validates incoming client origins (`localhost`, `127.0.0.1`, and `*.vercel.app`) to prevent Cross-Site WebSocket Hijacking.
 
 ---
 

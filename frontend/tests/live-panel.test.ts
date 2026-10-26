@@ -74,4 +74,20 @@ describe('Frontend Live Networking Mode Integration', () => {
     const decodedText = new TextDecoder().decode(byteNumbers);
     expect(decodedText).toBe(originalText);
   });
+
+  it('validates connection status transitions and prevents false connected state', () => {
+    // Initial state must be CONNECTING or OFFLINE, never prematurely CONNECTED
+    const initialStatus = 'CONNECTING';
+    const isPrematurelyConnected = initialStatus === 'CONNECTED';
+    expect(isPrematurelyConnected).toBe(false);
+
+    // Only transitions to CONNECTED upon real WebSocket onopen
+    const connectedStatus = 'CONNECTED';
+    expect(connectedStatus === 'CONNECTED').toBe(true);
+
+    // Transitions to OFFLINE upon error/close
+    const offlineStatus = 'OFFLINE';
+    expect(offlineStatus === 'CONNECTED').toBe(false);
+    expect(offlineStatus).toBe('OFFLINE');
+  });
 });

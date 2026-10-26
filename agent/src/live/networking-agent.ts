@@ -1,4 +1,7 @@
 import * as dgram from 'dgram';
+import * as http from 'http';
+import * as https from 'https';
+import * as fs from 'fs';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
   LiveAgentStateDto,
@@ -24,6 +27,12 @@ export interface NetworkingAgentConfig {
   udpHost?: string;
   wsPort?: number;
   wsHost?: string;
+  wssPort?: number;
+  sslCert?: string | Buffer;
+  sslKey?: string | Buffer;
+  sslCertPath?: string;
+  sslKeyPath?: string;
+  allowedOrigins?: string[];
   storageDir?: string;
 }
 
@@ -33,12 +42,17 @@ export class NetworkingAgent {
 
   private udpSocket?: dgram.Socket;
   private wsServer?: WebSocketServer;
+  private httpsServer?: https.Server;
   private connectedWsClients = new Set<WebSocket>();
 
   private localUdpPort: number;
   private localUdpHost: string;
   private wsPort: number;
   private wsHost: string;
+  private wssPort?: number;
+  private sslCert?: string | Buffer;
+  private sslKey?: string | Buffer;
+  private allowedOrigins?: string[];
 
   private peerHost?: string;
   private peerUdpPort?: number;
@@ -62,7 +76,53 @@ export class NetworkingAgent {
     this.localUdpHost = config?.udpHost ?? '0.0.0.0';
     this.wsPort = config?.wsPort ?? 8080;
     this.wsHost = config?.wsHost ?? '127.0.0.1'; // Binds strictly to loopback by default for security
+    this.wssPort = config?.wssPort;
+    this.sslCert = config?.sslCert;
+    this.sslKey = config?.sslKey;
+
+    if (!this.sslCert && config?.sslCertPath && fs.existsSync(config.sslCertPath)) {
+      this.sslCert = fs.readFileSync(config.sslCertPath);
+    }
+    if (!this.sslKey && config?.sslKeyPath && fs.existsSync(config.sslKeyPath)) {
+      this.sslKey = fs.readFileSync(config.sslKeyPath);
+    }
+
+    this.allowedOrigins = config?.allowedOrigins;
     this.fileManager = new FileTransferManager(config?.storageDir);
+  }
+
+  /**
+   * Validates WebSocket connection origin to prevent Cross-Site WebSocket Hijacking (CSWSH).
+   * Permits loopback, localhost, and trusted Vercel deployments.
+   */
+  public isOriginAllowed(origin?: string): boolean {
+    if (!origin) return true; // Local CLI, automated unit tests, native tools
+
+    try {
+      const parsed = new URL(origin);
+      const host = parsed.hostname.toLowerCase();
+      // Allow localhost and loopback IPv4/IPv6
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
+        return true;
+      }
+      // Allow Vercel app domains
+      if (host.endsWith('.vercel.app') || host === 'vercel.app') {
+        return true;
+      }
+      // Allow user-configured whitelist
+      if (
+        this.allowedOrigins &&
+        this.allowedOrigins.some(
+          (allowed) => host === allowed.toLowerCase() || host.endsWith('.' + allowed.toLowerCase())
+        )
+      ) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+
+    return false;
   }
 
   /**
@@ -118,6 +178,17 @@ export class NetworkingAgent {
       this.wsServer = undefined;
     }
 
+    if (this.httpsServer) {
+      await new Promise<void>((resolve) => {
+        try {
+          this.httpsServer?.close(() => resolve());
+        } catch {
+          resolve();
+        }
+      });
+      this.httpsServer = undefined;
+    }
+
     this.status = 'DISCONNECTED';
     this.broadcastStatusUpdate();
   }
@@ -129,47 +200,91 @@ export class NetworkingAgent {
 
     return new Promise((resolve, reject) => {
       try {
-        const server = new WebSocketServer({
-          port: this.wsPort,
-          host: this.wsHost,
-        });
+        const verifyClient = (
+          info: { origin: string; secure: boolean; req: http.IncomingMessage },
+          callback: (res: boolean, code?: number, message?: string) => void
+        ) => {
+          const origin = info.origin || (info.req.headers.origin as string | undefined);
+          if (!this.isOriginAllowed(origin)) {
+            console.warn(`[SECURITY] Rejected WebSocket connection from unauthorized origin: ${origin}`);
+            callback(false, 403, 'Forbidden: Origin unauthorized');
+            return;
+          }
+          callback(true);
+        };
 
-        server.on('listening', () => {
-          this.wsServer = server;
-          resolve();
-        });
-
-        server.on('error', (err) => {
-          this.lastError = `WS Server Error: ${err.message}`;
-          reject(err);
-        });
-
-        server.on('connection', (ws) => {
-          this.connectedWsClients.add(ws);
-
-          // Push immediate state and received files list to newly connected frontend
-          this.sendWsMessage(ws, {
-            type: 'AGENT_STATUS_UPDATE',
-            payload: { state: this.getStateDto() },
-            timestamp: Date.now(),
-          });
-          this.sendWsMessage(ws, {
-            type: 'RECEIVED_FILES_LIST',
-            payload: { files: this.fileManager.getCompletedFiles() },
-            timestamp: Date.now(),
+        if (this.sslCert && this.sslKey) {
+          // Launch Secure HTTPS/WSS Server on loopback
+          const port = this.wssPort ?? 8443;
+          const httpsServer = https.createServer({
+            cert: this.sslCert,
+            key: this.sslKey,
           });
 
-          ws.on('message', (data) => {
-            this.handleWsCommand(data.toString());
+          const server = new WebSocketServer({
+            server: httpsServer,
+            verifyClient,
           });
 
-          ws.on('close', () => {
-            this.connectedWsClients.delete(ws);
+          httpsServer.on('error', (err) => {
+            this.lastError = `WSS HTTPS Server Error: ${err.message}`;
+            reject(err);
           });
-        });
+
+          httpsServer.listen(port, this.wsHost, () => {
+            this.httpsServer = httpsServer;
+            this.wsServer = server;
+            this.attachWsServerListeners(server);
+            resolve();
+          });
+        } else {
+          // Standard WebSocket Server on loopback
+          const server = new WebSocketServer({
+            port: this.wsPort,
+            host: this.wsHost,
+            verifyClient,
+          });
+
+          server.on('listening', () => {
+            this.wsServer = server;
+            this.attachWsServerListeners(server);
+            resolve();
+          });
+
+          server.on('error', (err) => {
+            this.lastError = `WS Server Error: ${err.message}`;
+            reject(err);
+          });
+        }
       } catch (err) {
         reject(err);
       }
+    });
+  }
+
+  private attachWsServerListeners(server: WebSocketServer): void {
+    server.on('connection', (ws) => {
+      this.connectedWsClients.add(ws);
+
+      // Push immediate state and received files list to newly connected frontend
+      this.sendWsMessage(ws, {
+        type: 'AGENT_STATUS_UPDATE',
+        payload: { state: this.getStateDto() },
+        timestamp: Date.now(),
+      });
+      this.sendWsMessage(ws, {
+        type: 'RECEIVED_FILES_LIST',
+        payload: { files: this.fileManager.getCompletedFiles() },
+        timestamp: Date.now(),
+      });
+
+      ws.on('message', (data) => {
+        this.handleWsCommand(data.toString());
+      });
+
+      ws.on('close', () => {
+        this.connectedWsClients.delete(ws);
+      });
     });
   }
 
