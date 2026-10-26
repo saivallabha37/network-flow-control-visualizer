@@ -147,10 +147,15 @@ export class NetworkingAgent {
         server.on('connection', (ws) => {
           this.connectedWsClients.add(ws);
 
-          // Push immediate state to newly connected frontend
+          // Push immediate state and received files list to newly connected frontend
           this.sendWsMessage(ws, {
             type: 'AGENT_STATUS_UPDATE',
             payload: { state: this.getStateDto() },
+            timestamp: Date.now(),
+          });
+          this.sendWsMessage(ws, {
+            type: 'RECEIVED_FILES_LIST',
+            payload: { files: this.fileManager.getCompletedFiles() },
             timestamp: Date.now(),
           });
 
@@ -254,7 +259,36 @@ export class NetworkingAgent {
           this.sendErrorToClients('SEND_TEXT: Text payload must be a non-empty string');
           return;
         }
-        this.sendText(obj.text);
+        const clientMsgId = typeof obj.clientMessageId === 'string' ? obj.clientMessageId : undefined;
+        this.sendText(obj.text, clientMsgId);
+        break;
+      }
+
+      case 'LIST_RECEIVED_FILES': {
+        const files = this.fileManager.getCompletedFiles();
+        this.broadcastWsMessage({
+          type: 'RECEIVED_FILES_LIST',
+          payload: { files },
+          timestamp: Date.now(),
+        });
+        break;
+      }
+
+      case 'DOWNLOAD_FILE': {
+        if (typeof obj.filename !== 'string' || !obj.filename.trim()) {
+          this.sendErrorToClients('DOWNLOAD_FILE: Missing or invalid filename');
+          return;
+        }
+        try {
+          const fileData = this.fileManager.readCompletedFile(obj.filename.trim());
+          this.broadcastWsMessage({
+            type: 'FILE_DOWNLOAD_DATA',
+            payload: fileData,
+            timestamp: Date.now(),
+          });
+        } catch (err) {
+          this.sendErrorToClients(`Failed to download file: ${err instanceof Error ? err.message : String(err)}`);
+        }
         break;
       }
 
@@ -502,6 +536,13 @@ export class NetworkingAgent {
         onPacketToSend: (pkt) => this.sendUdpDatagram(pkt),
         onTelemetry: (evt) => this.handleTelemetryEvent(evt),
         onPayloadDelivered: (p, type, txId) => this.handlePayloadDelivered(p, type, txId),
+        onMessageStatusUpdate: (clientMessageId, status, seqNum) => {
+          this.broadcastWsMessage({
+            type: 'MESSAGE_STATUS_UPDATE',
+            payload: { clientMessageId, status, seqNum },
+            timestamp: Date.now(),
+          });
+        },
         onError: (err) => this.sendErrorToClients(err),
         onStatsUpdate: () => this.broadcastStatusUpdate(),
       });
@@ -623,6 +664,13 @@ export class NetworkingAgent {
         onPacketToSend: (pkt) => this.sendUdpDatagram(pkt),
         onTelemetry: (evt) => this.handleTelemetryEvent(evt),
         onPayloadDelivered: (p, type, txId) => this.handlePayloadDelivered(p, type, txId),
+        onMessageStatusUpdate: (clientMessageId, status, seqNum) => {
+          this.broadcastWsMessage({
+            type: 'MESSAGE_STATUS_UPDATE',
+            payload: { clientMessageId, status, seqNum },
+            timestamp: Date.now(),
+          });
+        },
         onError: (err) => this.sendErrorToClients(err),
         onStatsUpdate: () => this.broadcastStatusUpdate(),
       });
@@ -780,13 +828,20 @@ export class NetworkingAgent {
 
   // ================= Data & File Transmission =================
 
-  public sendText(text: string): void {
+  public sendText(text: string, clientMessageId?: string): void {
     if (!this.liveSession || this.status !== 'CONNECTED') {
+      if (clientMessageId) {
+        this.broadcastWsMessage({
+          type: 'MESSAGE_STATUS_UPDATE',
+          payload: { clientMessageId, status: 'FAILED' },
+          timestamp: Date.now(),
+        });
+      }
       this.sendErrorToClients('Cannot send text: No active peer connection');
       return;
     }
 
-    this.liveSession.queuePayload(text, 'TEXT');
+    this.liveSession.queuePayload(text, 'TEXT', undefined, clientMessageId);
   }
 
   public sendFile(filename: string, fileBase64: string): void {
@@ -841,9 +896,17 @@ export class NetworkingAgent {
     _transferId?: string
   ): void {
     if (payloadType === 'TEXT') {
+      const peerRole = this.role === 'HOST_A' ? 'HOST_B' : 'HOST_A';
+      const peerName = this.role === 'HOST_A' ? 'Laptop B' : 'Laptop A';
       this.broadcastWsMessage({
         type: 'MESSAGE_DELIVERED',
-        payload: { text: payload, timestamp: Date.now() },
+        payload: {
+          id: `msg_in_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          senderRole: peerRole,
+          senderName: peerName,
+          text: payload,
+          timestamp: Date.now(),
+        },
         timestamp: Date.now(),
       });
     } else if (payloadType === 'FILE_CHUNK') {
@@ -859,6 +922,13 @@ export class NetworkingAgent {
               filePath: result.filePath,
               sha256: result.sha256,
             },
+            timestamp: Date.now(),
+          });
+
+          // Broadcast updated completed files list to refresh Received Files dashboard
+          this.broadcastWsMessage({
+            type: 'RECEIVED_FILES_LIST',
+            payload: { files: this.fileManager.getCompletedFiles() },
             timestamp: Date.now(),
           });
         } else if (result.error) {

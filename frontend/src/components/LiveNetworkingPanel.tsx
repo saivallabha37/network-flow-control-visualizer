@@ -1,19 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Wifi,
   WifiOff,
   Radio,
   Send,
   Upload,
+  Download,
   AlertTriangle,
   CheckCircle,
-  FileText,
+  CheckCheck,
+  Check,
   Clock,
   ArrowRight,
   ArrowLeft,
   RefreshCw,
   Sliders,
   Layers,
+  FileText,
+  MessageSquare,
+  HelpCircle,
+  HardDrive,
+  Trash2,
+  ExternalLink,
 } from 'lucide-react';
 import { ProtocolType } from '@agent';
 import { useLiveAgent } from '../hooks/useLiveAgent';
@@ -26,15 +34,20 @@ export const LiveNetworkingPanel: React.FC = () => {
     connectWs,
     agentState,
     events,
-    messages,
+    chatMessages,
     files,
+    receivedFiles,
+    downloadingFilename,
     lastError,
     connectPeer,
     disconnectPeer,
     sendText,
     sendFile,
+    downloadFile,
+    refreshReceivedFiles,
     setFault,
     clearEvents,
+    clearChat,
   } = useLiveAgent();
 
   const [peerHost, setPeerHost] = useState('127.0.0.1');
@@ -45,9 +58,20 @@ export const LiveNetworkingPanel: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dropDataActive, setDropDataActive] = useState(false);
   const [dropAckActive, setDropAckActive] = useState(false);
+  const [showSetupHelp, setShowSetupHelp] = useState(false);
 
-  const isConnectedToPeer = agentState?.status === 'CONNECTED' || agentState?.status === 'TRANSFERRING';
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  const isConnectedToPeer =
+    agentState?.status === 'CONNECTED' || agentState?.status === 'TRANSFERRING';
   const isConnecting = agentState?.status === 'CONNECTING';
+
+  // Auto-scroll chat to latest message
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
 
   const handleConnectPeer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,11 +87,18 @@ export const LiveNetworkingPanel: React.FC = () => {
     });
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!messageInput.trim() || !isConnectedToPeer) return;
     sendText(messageInput.trim());
     setMessageInput('');
+  };
+
+  const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,6 +130,12 @@ export const LiveNetworkingPanel: React.FC = () => {
       setDropAckActive(next);
       setFault({ dropNextAck: next });
     }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   return (
@@ -144,62 +181,111 @@ export const LiveNetworkingPanel: React.FC = () => {
             </div>
           </div>
 
-          {!isWsConnected && (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={wsUrl}
-                onChange={(e) => setWsUrl(e.target.value)}
-                className="bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs rounded text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
-                placeholder="ws://127.0.0.1:8080"
-              />
-              <button
-                onClick={() => connectWs()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium transition-colors"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Reconnect
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {!isWsConnected && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={wsUrl}
+                  onChange={(e) => setWsUrl(e.target.value)}
+                  placeholder="ws://127.0.0.1:8080"
+                  className="bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs rounded-lg text-slate-200 w-44 font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={() => connectWs(wsUrl)}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Connect
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowSetupHelp(!showSetupHelp)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+              Setup &amp; Vercel Guide
+            </button>
+          </div>
         </div>
 
+        {/* Expandable Setup & Vercel HTTPS Help Banner */}
+        {showSetupHelp && (
+          <div className="mt-4 pt-4 border-t border-slate-800/80 text-xs text-slate-300 space-y-3 bg-slate-950/40 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-white flex items-center gap-1.5">
+                <ExternalLink className="w-4 h-4 text-indigo-400" />
+                Windows Background Service &amp; Vercel Deployment Instructions
+              </span>
+              <button
+                onClick={() => setShowSetupHelp(false)}
+                className="text-slate-500 hover:text-slate-300 text-xs"
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] leading-relaxed">
+              <div className="p-3 rounded bg-slate-900/80 border border-slate-800">
+                <div className="font-semibold text-indigo-300 mb-1">1. Run Agent Independently</div>
+                <p className="text-slate-400">
+                  Double-click <code className="text-slate-200">start-agent.bat</code> in the repository root, or run{' '}
+                  <code className="text-slate-200">npm run agent:service:install</code> to start silently on Windows login without opening VS Code or a command window.
+                </p>
+              </div>
+              <div className="p-3 rounded bg-slate-900/80 border border-slate-800">
+                <div className="font-semibold text-emerald-300 mb-1">2. Vercel HTTPS Mixed Content</div>
+                <p className="text-slate-400">
+                  When accessing from <code className="text-slate-200">https://...vercel.app</code>, browsers protect loopback access. If your browser blocks the connection, click the tune/lock icon in the address bar &rarr; Site settings &rarr; <strong>Insecure content</strong> &rarr; <strong>Allow</strong>.
+                </p>
+              </div>
+              <div className="p-3 rounded bg-slate-900/80 border border-slate-800">
+                <div className="font-semibold text-amber-300 mb-1">3. Windows Firewall (UDP 9000)</div>
+                <p className="text-slate-400">
+                  To allow inbound packets from the second laptop on your LAN, right-click{' '}
+                  <code className="text-slate-200">scripts/windows/configure-firewall.bat</code> and select <em>Run as administrator</em>.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {lastError && (
-          <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+          <div className="mt-3 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{lastError}</span>
           </div>
         )}
       </div>
 
-      {/* Grid: Peer Connection Configuration & Fault Injection */}
+      {/* Top Configuration & Fault Injection Section */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Peer Handshake & Connection */}
+        {/* Peer Handshake & Session Controls */}
         <div className="lg:col-span-7 rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg backdrop-blur-md">
           <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-3">
             <Radio className="w-4 h-4 text-indigo-400" />
-            <h3 className="font-semibold text-white text-sm">Two-Laptop Peer Connection</h3>
+            <h3 className="font-semibold text-white text-sm">Peer Handshake &amp; Protocol Setup</h3>
           </div>
 
           {!isConnectedToPeer ? (
             <form onSubmit={handleConnectPeer} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Peer Laptop LAN IP
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Peer IPv4 Address
                   </label>
                   <input
                     type="text"
                     value={peerHost}
                     onChange={(e) => setPeerHost(e.target.value)}
-                    placeholder="192.168.1.X or 127.0.0.1"
-                    required
-                    className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
+                    placeholder="192.168.1.50 or 127.0.0.1"
+                    className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
                     Peer UDP Port
                   </label>
                   <input
@@ -207,16 +293,15 @@ export const LiveNetworkingPanel: React.FC = () => {
                     value={peerPort}
                     onChange={(e) => setPeerPort(e.target.value)}
                     placeholder="9000"
-                    required
-                    className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    ARQ Protocol
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Flow Control Protocol
                   </label>
                   <select
                     value={selectedProtocol}
@@ -224,26 +309,25 @@ export const LiveNetworkingPanel: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
                   >
                     <option value="stop-and-wait">Stop-and-Wait ARQ</option>
-                    <option value="go-back-n">Go-Back-N ARQ</option>
+                    <option value="go-back-n">Go-Back-N ARQ (Sliding Window)</option>
                     <option value="selective-repeat">Selective Repeat ARQ</option>
                   </select>
                 </div>
 
-                {selectedProtocol !== 'stop-and-wait' && (
-                  <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Window Size (N)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="16"
-                      value={windowSize}
-                      onChange={(e) => setWindowSize(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Window Size (Frames)
+                  </label>
+                  <input
+                    type="number"
+                    disabled={selectedProtocol === 'stop-and-wait'}
+                    value={selectedProtocol === 'stop-and-wait' ? '1' : windowSize}
+                    onChange={(e) => setWindowSize(e.target.value)}
+                    min={1}
+                    max={16}
+                    className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50"
+                  />
+                </div>
               </div>
 
               <button
@@ -277,7 +361,7 @@ export const LiveNetworkingPanel: React.FC = () => {
                 </button>
               </div>
 
-              {/* Active Window & State Info */}
+              {/* Active Window & State Telemetry */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
                   <div className="text-[11px] text-slate-400 uppercase tracking-wider">Sender Base</div>
@@ -373,69 +457,163 @@ export const LiveNetworkingPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Live Data Dispatch (Text Message & File Transfer) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Send Live Text Message */}
-        <div className="lg:col-span-6 rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg backdrop-blur-md">
-          <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-3">
-            <Send className="w-4 h-4 text-indigo-400" />
-            <h3 className="font-semibold text-white text-sm">Send Text Over Live ARQ</h3>
+      {/* Feature 2: Bidirectional Live Chat Interface */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg backdrop-blur-md">
+        <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-indigo-400" />
+            <div>
+              <h3 className="font-semibold text-white text-sm">
+                Bidirectional Live Chat with Protocol Delivery Status
+              </h3>
+              <p className="text-xs text-slate-400">
+                Messages transmit as real UDP datagrams under active ARQ flow control with automatic retransmission.
+              </p>
+            </div>
           </div>
 
-          <form onSubmit={handleSendMessage} className="space-y-3">
-            <textarea
-              rows={3}
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              disabled={!isConnectedToPeer}
-              placeholder={
-                isConnectedToPeer
-                  ? 'Type a message to transmit over UDP with flow control...'
-                  : 'Connect to a peer first to send text messages.'
-              }
-              className="w-full bg-slate-950 border border-slate-700 px-3 py-2 text-xs rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-            />
-            <button
-              type="submit"
-              disabled={!isConnectedToPeer || !messageInput.trim()}
-              className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow transition-all flex items-center justify-center gap-2"
-            >
-              <Send className="w-3.5 h-3.5" />
-              Transmit Datagram
-            </button>
-          </form>
-
-          {/* Delivered Text Messages Stream */}
-          <div className="mt-5">
-            <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Received Messages Feed ({messages.length})
-            </h4>
-            <div className="h-40 overflow-y-auto space-y-2 p-2 rounded-lg bg-slate-950/70 border border-slate-800 font-mono text-xs">
-              {messages.length === 0 ? (
-                <div className="text-slate-500 text-center py-12">No messages received yet.</div>
-              ) : (
-                messages.map((m, i) => (
-                  <div key={i} className="p-2 rounded bg-slate-900/80 border border-slate-800/80">
-                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
-                      <span>Peer Message</span>
-                      <span>{new Date(m.timestamp).toLocaleTimeString()}</span>
-                    </div>
-                    <div className="text-slate-200 mt-1">{m.text}</div>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-slate-400 px-2.5 py-1 rounded-full bg-slate-950 border border-slate-800">
+              {chatMessages.length} message{chatMessages.length === 1 ? '' : 's'}
+            </span>
+            {chatMessages.length > 0 && (
+              <button
+                onClick={clearChat}
+                className="text-slate-400 hover:text-slate-200 text-xs p-1.5 rounded hover:bg-slate-800 transition-colors"
+                title="Clear Chat History"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Send Live File Transfer */}
-        <div className="lg:col-span-6 rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg backdrop-blur-md">
+        {/* Chat Feed */}
+        <div
+          ref={chatScrollRef}
+          className="h-80 overflow-y-auto space-y-3 p-4 rounded-lg bg-slate-950/70 border border-slate-800 font-sans text-xs"
+        >
+          {chatMessages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 space-y-2">
+              <MessageSquare className="w-8 h-8 text-slate-700" />
+              <p className="text-xs">No messages exchanged in this session yet.</p>
+              <p className="text-[11px] text-slate-600">
+                {isConnectedToPeer
+                  ? 'Type a message below and hit Enter to transmit over UDP.'
+                  : 'Connect to a peer laptop first to begin live messaging.'}
+              </p>
+            </div>
+          ) : (
+            chatMessages.map((msg) => {
+              const isSelf = msg.sender === 'SELF';
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isSelf ? 'items-end' : 'items-start'}`}
+                >
+                  <div className="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400 px-1">
+                    <span className="font-medium text-slate-300">{msg.senderLabel}</span>
+                    <span>&bull;</span>
+                    <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                  </div>
+
+                  <div
+                    className={`max-w-[75%] rounded-2xl p-3 shadow-md ${
+                      isSelf
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-sm'
+                        : 'bg-slate-800/90 text-slate-100 border border-slate-700/80 rounded-tl-sm'
+                    }`}
+                  >
+                    <p className="leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+
+                    {/* Delivery Status Indicator for Self Messages */}
+                    {isSelf && (
+                      <div className="mt-1.5 pt-1 border-t border-indigo-400/30 flex items-center justify-end gap-1.5 text-[10px] text-indigo-200">
+                        {msg.status === 'SENDING' && (
+                          <span className="flex items-center gap-1 text-amber-200">
+                            <Clock className="w-3 h-3 animate-spin" />
+                            <span>Queued in window...</span>
+                          </span>
+                        )}
+                        {msg.status === 'SENT' && (
+                          <span className="flex items-center gap-1 text-sky-200">
+                            <Check className="w-3 h-3" />
+                            <span>
+                              Transmitted on UDP {msg.seqNum !== undefined ? `[seq ${msg.seqNum}]` : ''}
+                            </span>
+                          </span>
+                        )}
+                        {msg.status === 'DELIVERED' && (
+                          <span className="flex items-center gap-1 text-emerald-300 font-medium">
+                            <CheckCheck className="w-3.5 h-3.5" />
+                            <span>Delivered &amp; ACKed</span>
+                          </span>
+                        )}
+                        {msg.status === 'FAILED' && (
+                          <span className="flex items-center gap-1 text-rose-300 font-medium">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>Failed (Timeout / Retry Exhaustion)</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Chat Input Bar */}
+        <div className="mt-4">
+          <form onSubmit={handleSendMessage} className="space-y-2">
+            <div className="relative">
+              <textarea
+                rows={2}
+                value={messageInput}
+                onChange={(e) => setMessageInput(e.target.value)}
+                onKeyDown={handleChatKeyDown}
+                disabled={!isConnectedToPeer}
+                placeholder={
+                  isConnectedToPeer
+                    ? 'Type a message... (Press Enter to send, Shift+Enter for newline)'
+                    : 'Establish handshake with peer laptop to begin live communication.'
+                }
+                className="w-full bg-slate-950 border border-slate-700 pr-24 pl-3 py-2 text-xs rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50 resize-none font-sans"
+              />
+              <button
+                type="submit"
+                disabled={!isConnectedToPeer || !messageInput.trim()}
+                className="absolute right-2 bottom-3 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md text-xs font-semibold shadow transition-all flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Send
+              </button>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+              <span>Enter to send &bull; Shift+Enter for new line</span>
+              <span className="font-mono text-slate-400">
+                {isConnectedToPeer ? 'Live Socket Active' : 'Disconnected'}
+              </span>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Feature 3: Received Files Dashboard & File Transfer Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Outgoing File Transfer Card */}
+        <div className="lg:col-span-5 rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg backdrop-blur-md">
           <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-3">
             <Upload className="w-4 h-4 text-emerald-400" />
-            <h3 className="font-semibold text-white text-sm">Safe Small File Transfer (Chunked)</h3>
+            <h3 className="font-semibold text-white text-sm">Send File via UDP Chunks</h3>
           </div>
 
-          <div className="space-y-3">
+          <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+            Files are sliced into safe 768-byte chunks, hashed with SHA-256, and reliably transmitted over UDP with ARQ flow control.
+          </p>
+
+          <div className="space-y-4">
             <div className="flex items-center gap-3">
               <input
                 type="file"
@@ -447,60 +625,126 @@ export const LiveNetworkingPanel: React.FC = () => {
                 type="button"
                 onClick={handleSendFile}
                 disabled={!isConnectedToPeer || !selectedFile}
-                className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
+                className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5"
               >
-                Send File
+                <Upload className="w-3.5 h-3.5" />
+                Send
               </button>
             </div>
+
             {selectedFile && (
-              <p className="text-[11px] text-slate-400">
-                Selected: <span className="text-slate-200 font-medium">{selectedFile.name}</span> (
-                {(selectedFile.size / 1024).toFixed(1)} KB)
-              </p>
+              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-300">
+                Selected: <span className="text-white font-medium">{selectedFile.name}</span> ({formatFileSize(selectedFile.size)})
+              </div>
+            )}
+
+            {/* Active Transfer Progress */}
+            {files.length > 0 && (
+              <div className="space-y-2 mt-4 pt-4 border-t border-slate-800">
+                <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                  Active / Recent Transfer Progress
+                </div>
+                {files.map((f, i) => (
+                  <div key={i} className="p-2.5 rounded bg-slate-950 border border-slate-800 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-slate-200 truncate">{f.filename}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
+                        f.completed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                      }`}>
+                        {f.completed ? '100% Complete' : `${f.progressPercent}%`}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-emerald-500 h-1.5 transition-all duration-300"
+                        style={{ width: `${f.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
+        </div>
 
-          {/* Delivered Files List */}
-          <div className="mt-5">
-            <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Assembled &amp; Verified Files ({files.length})
-            </h4>
-            <div className="h-40 overflow-y-auto space-y-2 p-2 rounded-lg bg-slate-950/70 border border-slate-800 font-mono text-xs">
-              {files.length === 0 ? (
-                <div className="text-slate-500 text-center py-12">No files transferred yet.</div>
-              ) : (
-                files.map((f, i) => (
-                  <div key={i} className="p-2.5 rounded bg-slate-900/80 border border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-semibold text-slate-200">
-                        <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                        {f.filename}
-                      </div>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded ${
-                          f.completed
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-amber-500/20 text-amber-300'
-                        }`}
-                      >
-                        {f.completed ? '100% Verified' : `${f.progressPercent}% Chunks`}
+        {/* Feature 3: Received Files Dashboard with 1-Click Browser Download */}
+        <div className="lg:col-span-7 rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg backdrop-blur-md">
+          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-sky-400" />
+              <div>
+                <h3 className="font-semibold text-white text-sm">
+                  Received Files Dashboard &amp; Direct Browser Download
+                </h3>
+                <p className="text-xs text-slate-400">
+                  SHA-256 verified files received on this laptop. Click Download to save directly to your browser's Downloads folder.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={refreshReceivedFiles}
+              className="p-1.5 text-slate-400 hover:text-slate-200 rounded hover:bg-slate-800 transition-colors"
+              title="Refresh received files list"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="h-64 overflow-y-auto space-y-2 p-1 font-mono text-xs">
+            {receivedFiles.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-16 space-y-2">
+                <FileText className="w-8 h-8 text-slate-700" />
+                <p className="text-xs">No completed files received on this laptop yet.</p>
+                <p className="text-[11px] text-slate-600">
+                  Transferred files are verified with SHA-256 and will appear here with 1-click download.
+                </p>
+              </div>
+            ) : (
+              receivedFiles.map((f, i) => (
+                <div
+                  key={i}
+                  className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="font-semibold text-white truncate">{f.filename}</span>
+                      <span className="text-[10px] text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 shrink-0">
+                        {formatFileSize(f.fileSize)}
                       </span>
                     </div>
 
-                    {f.sha256 && (
-                      <div className="text-[10px] text-slate-400 truncate mt-1">
-                        SHA-256: <span className="text-slate-300">{f.sha256}</span>
-                      </div>
-                    )}
-                    {f.filePath && (
-                      <div className="text-[10px] text-emerald-400 truncate mt-0.5">
-                        Saved to: {f.filePath}
-                      </div>
-                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                      <span className="flex items-center gap-1 text-emerald-400/90 font-mono">
+                        <CheckCircle className="w-3 h-3" />
+                        SHA-256: <span className="text-slate-300 truncate max-w-[140px] sm:max-w-[200px]">{f.sha256}</span>
+                      </span>
+                      <span>&bull;</span>
+                      <span>{new Date(f.receivedAt).toLocaleTimeString()} ({new Date(f.receivedAt).toLocaleDateString()})</span>
+                    </div>
                   </div>
-                ))
-              )}
-            </div>
+
+                  <button
+                    onClick={() => downloadFile(f.filename)}
+                    disabled={downloadingFilename === f.filename}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5 shadow"
+                  >
+                    {downloadingFilename === f.filename ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Fetching...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5" />
+                        Download
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -571,4 +815,3 @@ export const LiveNetworkingPanel: React.FC = () => {
     </div>
   );
 };
-

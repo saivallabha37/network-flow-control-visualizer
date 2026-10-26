@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { FileHeaderPacket } from './live-types.js';
+import { FileHeaderPacket, VerifiedFileInfo } from './live-types.js';
 
 export const CHUNK_SIZE = 768; // 768 bytes raw = ~1024 base64 chars -> datagram ~1.2 KB, fits safely within 1472 MTU payload
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB maximum safeguard
@@ -325,5 +325,112 @@ export class FileTransferManager {
 
   public getActiveIncomingTransfers(): ActiveIncomingTransfer[] {
     return Array.from(this.incomingTransfers.values());
+  }
+
+  /**
+   * Scans the storage directory and returns metadata for all verified completed files.
+   * Excludes temporary chunk files (.tmp_*) and hidden/system files.
+   */
+  public getCompletedFiles(): VerifiedFileInfo[] {
+    this.ensureStorageDir();
+
+    try {
+      const entries = fs.readdirSync(this.storageDir);
+      const results: VerifiedFileInfo[] = [];
+
+      for (const entry of entries) {
+        if (entry.startsWith('.') || entry.includes('.tmp_')) {
+          continue;
+        }
+
+        const fullPath = path.join(this.storageDir, entry);
+        try {
+          const stats = fs.statSync(fullPath);
+          if (!stats.isFile()) continue;
+
+          // Compute sha256 for integrity verification
+          const content = fs.readFileSync(fullPath);
+          const sha256 = FileTransferManager.computeSha256(content);
+
+          results.push({
+            filename: entry,
+            fileSize: stats.size,
+            sha256,
+            receivedAt: stats.mtimeMs,
+          });
+        } catch {
+          // Ignore unreadable or locked files
+        }
+      }
+
+      // Sort newest first
+      return results.sort((a, b) => b.receivedAt - a.receivedAt);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Safely reads a verified completed file from storage for browser download.
+   * Enforces strict containment inside storageDir to prevent directory traversal.
+   */
+  public readCompletedFile(rawFilename: string): {
+    filename: string;
+    mimeType: string;
+    dataBase64: string;
+    sha256: string;
+    fileSize: number;
+  } {
+    this.ensureStorageDir();
+
+    const sanitized = FileTransferManager.sanitizeFilename(rawFilename);
+    const resolvedStorage = path.resolve(this.storageDir);
+    const resolvedPath = path.resolve(this.storageDir, sanitized);
+
+    // Prevent directory traversal escape
+    if (resolvedPath !== resolvedStorage && !resolvedPath.startsWith(resolvedStorage + path.sep)) {
+      throw new Error(`Access denied: Invalid filename path "${rawFilename}"`);
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`File not found: "${sanitized}"`);
+    }
+
+    const stats = fs.statSync(resolvedPath);
+    if (!stats.isFile()) {
+      throw new Error(`Target is not a valid file: "${sanitized}"`);
+    }
+
+    if (stats.size > MAX_FILE_SIZE) {
+      throw new Error(`File size (${stats.size} B) exceeds maximum permitted download limit (${MAX_FILE_SIZE} B)`);
+    }
+
+    const buffer = fs.readFileSync(resolvedPath);
+    const sha256 = FileTransferManager.computeSha256(buffer);
+
+    const ext = path.extname(sanitized).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.txt': 'text/plain',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.pdf': 'application/pdf',
+      '.csv': 'text/csv',
+      '.html': 'text/html',
+      '.md': 'text/markdown',
+      '.zip': 'application/zip',
+      '.svg': 'image/svg+xml',
+    };
+    const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+    return {
+      filename: sanitized,
+      mimeType,
+      dataBase64: buffer.toString('base64'),
+      sha256,
+      fileSize: buffer.length,
+    };
   }
 }
